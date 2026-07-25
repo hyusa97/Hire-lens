@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { JobSearch } from "@/components/jobs/job-search";
+import { Footer } from "@/components/layout/footer";
+import { Navbar } from "@/components/layout/navbar";
 import { getActiveJobs } from "@/lib/supabase/jobs";
 
 export const dynamic = "force-dynamic";
@@ -8,8 +10,9 @@ export default async function JobsPage() {
   const jobs = await getActiveJobs();
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#f8faff_0%,#ffffff_100%)] text-slate-900">
-      <main className="mx-auto flex max-w-7xl flex-col px-6 py-16 lg:px-8 lg:py-20">
+    <div className="flex min-h-screen flex-col bg-[linear-gradient(180deg,#f8faff_0%,#ffffff_100%)] text-slate-900">
+      <Navbar />
+      <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-6 py-16 lg:px-8 lg:py-20">
         <div className="max-w-3xl">
           <p className="text-sm font-semibold uppercase tracking-[0.24em] text-indigo-600">
             Public roles
@@ -52,6 +55,7 @@ export default async function JobsPage() {
           </div>
         </div>
       </main>
+      <Footer />
     </div>
   );
 }

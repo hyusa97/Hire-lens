@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { Footer } from "@/components/layout/footer";
+import { Navbar } from "@/components/layout/navbar";
 import { getActiveJobByIdOrThrow } from "@/lib/supabase/jobs";
 
 export const dynamic = "force-dynamic";
@@ -18,8 +20,9 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
   const job = await getActiveJobByIdOrThrow(id);
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#f8faff_0%,#ffffff_100%)] text-slate-900">
-      <main className="mx-auto max-w-5xl px-6 py-16 lg:px-8 lg:py-20">
+    <div className="flex min-h-screen flex-col bg-[linear-gradient(180deg,#f8faff_0%,#ffffff_100%)] text-slate-900">
+      <Navbar />
+      <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-16 lg:px-8 lg:py-20">
         <Link
           href="/jobs"
           className="inline-flex items-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-indigo-200 hover:text-indigo-700"
@@ -115,7 +118,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           </div>
         </article>
       </main>
+      <Footer />
     </div>
   );
 }
-

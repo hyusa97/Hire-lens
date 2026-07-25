@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { ApplicationDetailView } from "@/components/recruiter/application-detail";
 import { getRecruiterApplicationDetail, updateRecruiterApplicationStatus } from "@/lib/recruiter/data";
 
+export const dynamic = "force-dynamic";
+
 export default async function RecruiterApplicationDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const application = await getRecruiterApplicationDetail(id);
@@ -26,10 +28,8 @@ export default async function RecruiterApplicationDetailPage({ params }: { param
   }
 
   return (
-    <main className="min-h-screen bg-slate-50">
-      <div className="mx-auto max-w-7xl px-6 py-10 lg:px-8">
-        <ApplicationDetailView application={application} onStatusChange={updateApplicationStatus} />
-      </div>
+    <main>
+      <ApplicationDetailView application={application} onStatusChange={updateApplicationStatus} />
     </main>
   );
 }

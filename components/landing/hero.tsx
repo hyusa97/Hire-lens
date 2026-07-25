@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 const highlights = [
   { label: "Hiring velocity", value: "3.2x faster" },
   { label: "Fit confidence", value: "94%" },
@@ -24,18 +26,18 @@ export function Hero() {
           </p>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <a
-              href="#features"
+            <Link
+              href="/jobs"
               className="inline-flex items-center justify-center rounded-full bg-indigo-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700"
             >
               Explore Jobs
-            </a>
-            <a
-              href="#cta"
+            </Link>
+            <Link
+              href="/recruiter"
               className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-6 py-3 text-sm font-semibold text-slate-700 transition hover:border-indigo-200 hover:text-indigo-700"
             >
               Recruiter Dashboard
-            </a>
+            </Link>
           </div>
 
           <div className="mt-8 flex flex-wrap gap-6 text-sm text-slate-600">
@@ -79,8 +81,8 @@ export function Hero() {
                   <span className="font-semibold text-slate-900">2 key gaps</span>
                 </div>
                 <ul className="mt-3 space-y-2 text-sm text-slate-600">
-                  <li>• Design systems leadership</li>
-                  <li>• Advanced analytics fluency</li>
+                  <li>Design systems leadership</li>
+                  <li>Advanced analytics fluency</li>
                 </ul>
               </div>
 

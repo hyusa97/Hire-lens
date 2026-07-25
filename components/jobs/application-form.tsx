@@ -204,3 +204,4 @@ export function ApplicationForm({ jobId, jobTitle }: { jobId: string; jobTitle: 
     </form>
   );
 }
+

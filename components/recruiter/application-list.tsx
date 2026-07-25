@@ -50,7 +50,11 @@ export function ApplicationList({ applications }: { applications: RecruiterAppli
                 <StatusBadge status={application.status} />
                 <RecommendationBadge recommendation={application.recommendation} />
               </div>
-              <h3 className="text-lg font-semibold text-slate-950">{application.candidate_name ?? "Unnamed candidate"}</h3>
+              <h3 className="text-lg font-semibold text-slate-950">
+                <Link href={`/recruiter/applications/${application.id}`} className="transition hover:text-indigo-700">
+                  {application.candidate_name ?? "Unnamed candidate"}
+                </Link>
+              </h3>
               <p className="text-sm text-slate-600">{application.job_title ?? "Unassigned role"}</p>
             </div>
 

@@ -54,7 +54,7 @@ export function RecruiterJobForm() {
 
         <div className="space-y-2">
           <label htmlFor="location" className="text-sm font-semibold text-slate-800">Location</label>
-          <input id="location" name="location" defaultValue={state.values.location} className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-indigo-400" placeholder="Remote • US / Europe" />
+          <input id="location" name="location" defaultValue={state.values.location} className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-indigo-400" placeholder="Remote / US / Europe" />
           {state.errors.location ? <p className="text-sm text-rose-600">{state.errors.location}</p> : null}
         </div>
 
@@ -121,3 +121,4 @@ export function RecruiterJobForm() {
     </form>
   );
 }
+
