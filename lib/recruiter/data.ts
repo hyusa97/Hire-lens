@@ -1,0 +1,207 @@
+import "server-only";
+import { supabaseServer } from "../supabase/server-client";
+
+export type RecruiterApplicationSummary = {
+  id: string;
+  status: string;
+  created_at: string;
+  match_score: number | null;
+  recommendation: string | null;
+  job_title: string | null;
+  candidate_name: string | null;
+};
+
+export type RecruiterDashboardStats = {
+  activeJobs: number;
+  totalApplications: number;
+  shortlistedApplications: number;
+  pendingReviewCount: number;
+  averageMatchScore: number | null;
+};
+
+export async function getRecruiterDashboardStats(): Promise<RecruiterDashboardStats> {
+  const [{ count: activeJobs }, { count: totalApplications }, { count: shortlistedApplications }, { count: pendingReviewCount }, { data: applications, error: applicationsError }] = await Promise.all([
+    supabaseServer.from("jobs").select("id", { count: "exact", head: true }).eq("status", "active"),
+    supabaseServer.from("applications").select("id", { count: "exact", head: true }),
+    supabaseServer.from("applications").select("id", { count: "exact", head: true }).eq("status", "shortlisted"),
+    supabaseServer.from("applications").select("id", { count: "exact", head: true }).in("status", ["pending", "reviewing"]),
+    supabaseServer.from("applications").select("match_score").not("match_score", "is", null),
+  ]);
+
+  if (applicationsError) {
+    throw new Error(applicationsError.message);
+  }
+
+  const validScores = (applications ?? []).flatMap((application) => (typeof application.match_score === "number" ? [application.match_score] : []));
+  const averageMatchScore = validScores.length > 0 ? validScores.reduce((sum, score) => sum + score, 0) / validScores.length : null;
+
+  return {
+    activeJobs: activeJobs ?? 0,
+    totalApplications: totalApplications ?? 0,
+    shortlistedApplications: shortlistedApplications ?? 0,
+    pendingReviewCount: pendingReviewCount ?? 0,
+    averageMatchScore,
+  };
+}
+
+export type RecruiterDashboardData = {
+  activeJobs: number;
+  totalApplications: number;
+  shortlistedCount: number;
+  pendingReviewCount: number;
+  averageMatchScore: number | null;
+  recentApplications: RecruiterApplicationSummary[];
+};
+
+export async function getRecruiterDashboardData(): Promise<RecruiterDashboardData> {
+  const [stats, recentApplications] = await Promise.all([getRecruiterDashboardStats(), getRecentApplications(8)]);
+
+  return {
+    activeJobs: stats.activeJobs,
+    totalApplications: stats.totalApplications,
+    shortlistedCount: stats.shortlistedApplications,
+    pendingReviewCount: stats.pendingReviewCount,
+    averageMatchScore: stats.averageMatchScore,
+    recentApplications,
+  };
+}
+
+export async function getRecruiterApplications(limit = 100): Promise<RecruiterApplicationSummary[]> {
+  return getRecentApplications(limit);
+}
+
+export async function getRecruiterApplicationDetail(applicationId: string): Promise<RecruiterApplicationDetail | null> {
+  return getRecruiterApplicationById(applicationId);
+}
+
+export async function getRecentApplications(limit = 8): Promise<RecruiterApplicationSummary[]> {
+  const { data, error } = await supabaseServer
+    .from("applications")
+    .select("id, status, created_at, match_score, recommendation, job_id, candidate_id")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (!data || data.length === 0) {
+    return [];
+  }
+
+  const candidateIds = [...new Set(data.map((application) => application.candidate_id).filter(Boolean))];
+  const jobIds = [...new Set(data.map((application) => application.job_id).filter(Boolean))];
+
+  const [{ data: candidates }, { data: jobs }] = await Promise.all([
+    supabaseServer.from("candidates").select("id, name").in("id", candidateIds),
+    supabaseServer.from("jobs").select("id, title").in("id", jobIds),
+  ]);
+
+  const candidateMap = new Map((candidates ?? []).map((candidate) => [candidate.id, candidate.name]));
+  const jobMap = new Map((jobs ?? []).map((job) => [job.id, job.title]));
+
+  return (data ?? []).map((application) => ({
+    id: application.id,
+    status: application.status,
+    created_at: application.created_at,
+    match_score: application.match_score,
+    recommendation: application.recommendation,
+    job_title: application.job_id ? jobMap.get(application.job_id) ?? null : null,
+    candidate_name: application.candidate_id ? candidateMap.get(application.candidate_id) ?? null : null,
+  }));
+}
+
+export type RecruiterApplicationDetail = {
+  id: string;
+  status: string;
+  created_at: string;
+  match_score: number | null;
+  recommendation: string | null;
+  matched_skills: string[] | null;
+  missing_skills: string[] | null;
+  strengths: string[] | null;
+  concerns: string[] | null;
+  ai_summary: string | null;
+  candidate: {
+    id: string;
+    name: string;
+    email: string;
+    phone: string | null;
+    skills: string[] | null;
+    experience_years: number | null;
+    profile_summary: string | null;
+    github_url: string | null;
+    portfolio_url: string | null;
+  } | null;
+  job: {
+    id: string;
+    title: string;
+    department: string | null;
+    location: string | null;
+    required_skills: string[] | null;
+  } | null;
+};
+
+export async function getRecruiterApplicationById(applicationId: string): Promise<RecruiterApplicationDetail | null> {
+  const { data: application, error } = await supabaseServer
+    .from("applications")
+    .select("id, status, created_at, match_score, recommendation, matched_skills, missing_skills, strengths, concerns, ai_summary, candidate_id, job_id")
+    .eq("id", applicationId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (!application) {
+    return null;
+  }
+
+  const [{ data: candidate }, { data: job }] = await Promise.all([
+    supabaseServer.from("candidates").select("id, name, email, phone, skills, experience_years, profile_summary, github_url, portfolio_url").eq("id", application.candidate_id).maybeSingle(),
+    supabaseServer.from("jobs").select("id, title, department, location, required_skills").eq("id", application.job_id).maybeSingle(),
+  ]);
+
+  return {
+    id: application.id,
+    status: application.status,
+    created_at: application.created_at,
+    match_score: application.match_score,
+    recommendation: application.recommendation,
+    matched_skills: application.matched_skills,
+    missing_skills: application.missing_skills,
+    strengths: application.strengths,
+    concerns: application.concerns,
+    ai_summary: application.ai_summary,
+    candidate: candidate
+      ? {
+          id: candidate.id,
+          name: candidate.name,
+          email: candidate.email,
+          phone: candidate.phone,
+          skills: candidate.skills,
+          experience_years: candidate.experience_years,
+          profile_summary: candidate.profile_summary,
+          github_url: candidate.github_url,
+          portfolio_url: candidate.portfolio_url,
+        }
+      : null,
+    job: job
+      ? {
+          id: job.id,
+          title: job.title,
+          department: job.department,
+          location: job.location,
+          required_skills: job.required_skills,
+        }
+      : null,
+  };
+}
+
+export async function updateRecruiterApplicationStatus(applicationId: string, status: "pending" | "reviewing" | "shortlisted" | "rejected") {
+  const { error } = await supabaseServer.from("applications").update({ status }).eq("id", applicationId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
