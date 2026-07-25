@@ -3,6 +3,9 @@ import { StatCard } from "@/components/recruiter/stat-card";
 import { ApplicationList } from "@/components/recruiter/application-list";
 import { getRecruiterDashboardData } from "@/lib/recruiter/data";
 
+export const dynamic = "force-dynamic";
+
+
 export default async function RecruiterDashboardPage() {
   const dashboard = await getRecruiterDashboardData();
 
@@ -37,7 +40,7 @@ export default async function RecruiterDashboardPage() {
               <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">Latest applications</h2>
             </div>
             <Link href="/recruiter/applications" className="text-sm font-semibold text-indigo-600 hover:underline">
-              Open full queue →
+              Open full queue
             </Link>
           </div>
           <div className="mt-8">
@@ -48,3 +51,5 @@ export default async function RecruiterDashboardPage() {
     </main>
   );
 }
+
+

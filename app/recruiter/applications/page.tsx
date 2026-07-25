@@ -2,6 +2,9 @@ import Link from "next/link";
 import { ApplicationList } from "@/components/recruiter/application-list";
 import { getRecruiterApplications } from "@/lib/recruiter/data";
 
+export const dynamic = "force-dynamic";
+
+
 export default async function RecruiterApplicationsPage() {
   const applications = await getRecruiterApplications();
 
@@ -30,3 +33,4 @@ export default async function RecruiterApplicationsPage() {
     </main>
   );
 }
+

@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": false,
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "noEmit": false,
+    "outDir": ".test-dist",
+    "rootDir": ".",
+    "types": ["node"]
+  },
+  "include": [
+    "lib/ai/schema.ts",
+    "lib/validation/**/*.ts",
+    "tests/**/*.ts"
+  ]
+}

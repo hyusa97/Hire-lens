@@ -24,7 +24,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           href="/jobs"
           className="inline-flex items-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-indigo-200 hover:text-indigo-700"
         >
-          ← Back to jobs
+          Back to jobs
         </Link>
 
         <article className="mt-8 rounded-3xl border border-slate-200 bg-white p-8 shadow-sm sm:p-10">
@@ -118,3 +118,4 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
     </div>
   );
 }
+
