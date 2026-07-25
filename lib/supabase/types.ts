@@ -1,40 +1,44 @@
 export type Job = {
   id: string;
   title: string;
-  company: string;
+  department: string | null;
   location: string | null;
-  description: string | null;
-  salary_min: number | null;
-  salary_max: number | null;
   employment_type: string | null;
-  status: string;
+  description: string | null;
+  requirements: string | null;
+  required_skills: string[] | null;
+  experience_level: string | null;
+  status: "active" | "closed" | "draft";
   created_at: string;
   updated_at: string;
 };
 
 export type Candidate = {
   id: string;
-  full_name: string;
+  name: string;
   email: string;
   phone: string | null;
-  headline: string | null;
-  location: string | null;
-  skills: string[] | null;
-  experience_years: number | null;
-  bio: string | null;
+  skills: string[];
+  experience_years: number;
+  profile_summary: string;
+  github_url: string | null;
+  portfolio_url: string | null;
   created_at: string;
-  updated_at: string;
 };
 
 export type Application = {
   id: string;
   job_id: string;
   candidate_id: string;
+  match_score: number | null;
+  matched_skills: string[];
+  missing_skills: string[];
+  strengths: string[];
+  concerns: string[];
+  ai_summary: string | null;
+  recommendation: string | null;
   status: string;
-  cover_letter: string | null;
-  source: string | null;
   created_at: string;
-  updated_at: string;
 };
 
 export type Database = {
@@ -44,17 +48,23 @@ export type Database = {
         Row: Job;
         Insert: Partial<Job>;
         Update: Partial<Job>;
+        Relationships: [];
       };
       candidates: {
         Row: Candidate;
-        Insert: Partial<Candidate>;
-        Update: Partial<Candidate>;
+        Insert: Partial<Omit<Candidate, "created_at">>;
+        Update: Partial<Omit<Candidate, "created_at">>;
+        Relationships: [];
       };
       applications: {
         Row: Application;
-        Insert: Partial<Application>;
-        Update: Partial<Application>;
+        Insert: Partial<Omit<Application, "id" | "created_at">>;
+        Update: Partial<Omit<Application, "id" | "created_at">>;
+        Relationships: [];
       };
     };
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
+    Enums: Record<string, never>;
   };
 };
