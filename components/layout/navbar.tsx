@@ -8,20 +8,42 @@ export function Navbar() {
           <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-600 text-sm font-semibold text-white shadow-sm">
             HL
           </span>
+
           <span className="text-lg font-semibold tracking-tight text-slate-900">
             HireLens
           </span>
         </Link>
 
-        <nav aria-label="Primary" className="flex flex-wrap items-center gap-x-6 gap-y-3 text-sm font-medium text-slate-600">
-          <Link href="/jobs" className="transition hover:text-slate-900">
+        <nav
+          aria-label="Primary"
+          className="flex flex-wrap items-center gap-x-5 gap-y-3 text-sm font-medium text-slate-600"
+        >
+          <Link
+            href="/jobs"
+            className="transition hover:text-slate-900"
+          >
             Find Jobs
           </Link>
-          <Link href="/#how-it-works" className="transition hover:text-slate-900">
+
+          <Link
+            href="/#how-it-works"
+            className="transition hover:text-slate-900"
+          >
             How It Works
           </Link>
-          <Link href="/recruiter" className="rounded-full border border-slate-200 bg-white px-4 py-2 font-semibold text-slate-700 transition hover:border-indigo-200 hover:text-indigo-700">
-            Recruiter Portal
+
+          <Link
+            href="/login"
+            className="transition hover:text-indigo-700"
+          >
+            Sign In
+          </Link>
+
+          <Link
+            href="/signup"
+            className="rounded-full bg-indigo-600 px-5 py-2 font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+          >
+            Sign Up
           </Link>
         </nav>
       </div>
