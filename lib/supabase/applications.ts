@@ -3,8 +3,10 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { analyzeCandidateWithGemini } from "../ai/analyze-candidate";
 import { supabase } from "./client";
 import { getActiveJobById } from "./jobs";
+import { supabaseServer } from "./server-client";
 import type { Database } from "./types";
 
 export type ApplicationFormValues = {
@@ -217,6 +219,84 @@ export async function submitApplication(
         message: "We could not submit your application right now. Please try again shortly.",
       };
     }
+
+    void (async () => {
+      try {
+        const { data: applicationRecord, error: applicationLookupError } = await supabaseServer
+          .from("applications")
+          .select("id, job_id, candidate_id, status")
+          .eq("candidate_id", candidateId)
+          .eq("job_id", jobId)
+          .maybeSingle();
+
+        const { data: candidateRecord, error: candidateLookupError } = await supabaseServer
+          .from("candidates")
+          .select("skills, experience_years, profile_summary")
+          .eq("id", candidateId)
+          .maybeSingle();
+
+        const { data: jobRecord, error: jobLookupError } = await supabaseServer
+          .from("jobs")
+          .select("title, department, description, requirements, required_skills, experience_level")
+          .eq("id", jobId)
+          .maybeSingle();
+
+        if (applicationLookupError || candidateLookupError || jobLookupError || !applicationRecord || !candidateRecord || !jobRecord) {
+          console.error("[AI Evaluation] records load failed", {
+            applicationLookupError: applicationLookupError?.message,
+            candidateLookupError: candidateLookupError?.message,
+            jobLookupError: jobLookupError?.message,
+          });
+          return;
+        }
+
+        console.info("[AI Evaluation] records loaded", { applicationId: applicationRecord.id });
+
+        const evaluation = await analyzeCandidateWithGemini(
+          {
+            title: jobRecord.title,
+            department: jobRecord.department,
+            description: jobRecord.description,
+            requirements: jobRecord.requirements,
+            requiredSkills: jobRecord.required_skills,
+            experienceLevel: jobRecord.experience_level,
+          },
+          {
+            skills: candidateRecord.skills ?? [],
+            experienceYears: candidateRecord.experience_years ?? 0,
+            profileSummary: candidateRecord.profile_summary ?? "",
+          },
+        );
+
+        console.info("[AI Evaluation] schema validated", { applicationId: applicationRecord.id });
+
+        const { error: updateError } = await supabaseServer.from("applications").update({
+          match_score: evaluation.matchScore,
+          matched_skills: evaluation.matchedSkills,
+          missing_skills: evaluation.missingSkills,
+          strengths: evaluation.strengths,
+          concerns: evaluation.concerns,
+          ai_summary: evaluation.summary,
+          recommendation: evaluation.recommendation,
+        }).eq("id", applicationRecord.id);
+
+        if (updateError) {
+          console.error("[AI Evaluation] database update failed", {
+            message: updateError.message,
+            code: updateError.code,
+            details: updateError.details,
+            hint: updateError.hint,
+          });
+          return;
+        }
+
+        console.info("[AI Evaluation] database update completed", { applicationId: applicationRecord.id });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown AI evaluation error";
+        const name = error instanceof Error ? error.name : "UnknownError";
+        console.error("[AI Evaluation] unexpected failure", { name, message });
+      }
+    })();
 
     revalidatePath("/jobs");
     revalidatePath(`/jobs/${jobId}`);
