@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { evaluationSchema } from "../lib/ai/schema";
+import { evaluationSchema, resumeIntelligenceSchema } from "../lib/ai/schema";
 import { parseApplicationValues } from "../lib/validation/applications";
 import { createJobSchema } from "../lib/validation/jobs";
 
@@ -34,6 +34,50 @@ const validEvaluation = {
   concerns: ["Limited database detail"],
   summary: "Strong candidate with relevant frontend and product experience.",
   recommendation: "GOOD_MATCH",
+};
+
+const validResumeIntelligence = {
+  professionalSummary:
+    "Software engineer focused on full-stack web applications and platform reliability.",
+  skills: [
+    {
+      name: "TypeScript",
+      evidence: ["Built production features using TypeScript in frontend and backend services."],
+    },
+  ],
+  experience: [
+    {
+      company: "Acme Corp",
+      role: "Software Engineer",
+      startDate: "2021-06",
+      endDate: null,
+      description: "Developed internal hiring workflow tools and APIs.",
+      skills: ["TypeScript", "PostgreSQL"],
+    },
+  ],
+  projects: [
+    {
+      name: "Hiring Insights Dashboard",
+      description: "Created a dashboard for recruiter analytics and application triage.",
+      technologies: ["React", "TypeScript", "Supabase"],
+      evidence: ["Implemented recruiter dashboard with React and Supabase."],
+    },
+  ],
+  education: [
+    {
+      institution: "State University",
+      degree: "B.Sc.",
+      field: "Computer Science",
+      startDate: "2017",
+      endDate: "2021",
+    },
+  ],
+  certifications: [
+    {
+      name: "AWS Certified Developer - Associate",
+      issuer: "Amazon Web Services",
+    },
+  ],
 };
 
 const tests: Array<[string, () => void]> = [
@@ -91,6 +135,19 @@ const tests: Array<[string, () => void]> = [
     const result = evaluationSchema.safeParse(validEvaluation);
 
     assert.equal(result.success, true);
+  }],
+  ["accepts a valid resume intelligence schema", () => {
+    const result = resumeIntelligenceSchema.safeParse(validResumeIntelligence);
+
+    assert.equal(result.success, true);
+  }],
+  ["rejects invalid resume intelligence shape", () => {
+    const result = resumeIntelligenceSchema.safeParse({
+      ...validResumeIntelligence,
+      skills: [{ name: "", evidence: ["TypeScript"] }],
+    });
+
+    assert.equal(result.success, false);
   }],
 ];
 

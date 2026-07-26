@@ -55,3 +55,36 @@ export function buildEvaluationPrompt(job: {
     candidateSummary,
   ].join("\n");
 }
+
+export function buildResumeTextExtractionPrompt() {
+  return [
+    "Extract plain text from the provided resume PDF.",
+    "Return only text content from the document in reading order.",
+    "Do not summarize, classify, score, or evaluate the candidate.",
+    "Do not add any information that is not present in the resume.",
+  ].join("\n");
+}
+
+export function buildResumeIntelligencePrompt(normalizedResumeText: string) {
+  return [
+    "You are an evidence extraction assistant for resumes.",
+    "Extract only information explicitly supported by the supplied resume text.",
+    "Do not infer likely skills, companies, dates, technologies, certifications, or job history.",
+    "Do not produce quality scores, personality judgments, hiring recommendations, proficiency levels, or inferred years per skill.",
+    "If information is missing, return null for nullable fields or empty arrays where required.",
+    "Evidence arrays must contain short verbatim snippets grounded in the resume text.",
+    "Return ONLY valid JSON with this exact shape:",
+    "{",
+    '  "professionalSummary": string,',
+    '  "skills": [{ "name": string, "evidence": string[] }],',
+    '  "experience": [{ "company": string, "role": string, "startDate": string | null, "endDate": string | null, "description": string, "skills": string[] }],',
+    '  "projects": [{ "name": string, "description": string, "technologies": string[], "evidence": string[] }],',
+    '  "education": [{ "institution": string, "degree": string, "field": string | null, "startDate": string | null, "endDate": string | null }],',
+    '  "certifications": [{ "name": string, "issuer": string | null }]',
+    "}",
+    "Do not include additional fields.",
+    "",
+    "Resume text:",
+    normalizedResumeText,
+  ].join("\n");
+}

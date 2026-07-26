@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { analyzeCandidateWithGemini } from "../ai/analyze-candidate";
+import { analyzeResumeFromPdfWithGemini } from "../ai/analyze-resume";
 import {
   parseApplicationValues,
   validateResumeFile,
@@ -27,6 +28,23 @@ function getInitialState(values: ApplicationFormValues): ApplicationFormState {
 
 function isDuplicateApplicationError(error: { code?: string | null }) {
   return error.code === "23505";
+}
+
+function sanitizeResumeExtractionError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return "Resume extraction failed due to an unexpected error.";
+  }
+
+  const message = error.message.trim();
+  if (!message) {
+    return "Resume extraction failed due to an unexpected error.";
+  }
+
+  if (message.length > 300) {
+    return `${message.slice(0, 297)}...`;
+  }
+
+  return message;
 }
 
 export async function submitApplication(
@@ -190,9 +208,11 @@ export async function submitApplication(
       status: "uploaded",
     };
 
-    const { error: evidenceError } = await supabaseServer
+    const { data: evidenceSourceRecord, error: evidenceError } = await supabaseServer
       .from("evidence_sources")
-      .insert(evidencePayload);
+      .insert(evidencePayload)
+      .select("id")
+      .single();
 
     if (evidenceError) {
       console.error("[submitApplication] evidence source insert failed", {
@@ -201,6 +221,22 @@ export async function submitApplication(
         details: evidenceError.details,
         hint: evidenceError.hint,
       });
+
+      await supabaseServer.storage
+        .from("candidate-resumes")
+        .remove([resumeStoragePath]);
+
+      await supabase.from("candidates").delete().eq("id", candidateId);
+
+      return {
+        ...getInitialState(values),
+        success: false,
+        message: "We could not save your resume information right now. Please try again shortly.",
+      };
+    }
+
+    if (!evidenceSourceRecord) {
+      console.error("[submitApplication] evidence source insert returned no row");
 
       await supabaseServer.storage
         .from("candidate-resumes")
@@ -271,6 +307,128 @@ export async function submitApplication(
         message:
           "We could not submit your application right now. Please try again shortly.",
       };
+    }
+
+    const {
+      data: resumeIntelligenceRecord,
+      error: resumeIntelligenceInsertError,
+    } = await supabaseServer
+      .from("resume_intelligence")
+      .insert({
+        evidence_source_id: evidenceSourceRecord.id,
+        extraction_status: "pending",
+        extraction_error: null,
+        professional_summary: null,
+        skills: [],
+        experience: [],
+        projects: [],
+        education: [],
+        certifications: [],
+      })
+      .select("id")
+      .single();
+
+    if (resumeIntelligenceInsertError || !resumeIntelligenceRecord) {
+      console.error("[Resume Intelligence] pending row insert failed", {
+        message: resumeIntelligenceInsertError?.message,
+        code: resumeIntelligenceInsertError?.code,
+        details: resumeIntelligenceInsertError?.details,
+        hint: resumeIntelligenceInsertError?.hint,
+      });
+
+      await supabaseServer
+        .from("evidence_sources")
+        .update({ status: "failed" })
+        .eq("id", evidenceSourceRecord.id);
+    } else {
+      const markProcessingOps = await Promise.all([
+        supabaseServer
+          .from("resume_intelligence")
+          .update({
+            extraction_status: "processing",
+            extraction_error: null,
+          })
+          .eq("id", resumeIntelligenceRecord.id),
+        supabaseServer
+          .from("evidence_sources")
+          .update({ status: "processing" })
+          .eq("id", evidenceSourceRecord.id),
+      ]);
+
+      if (markProcessingOps[0].error || markProcessingOps[1].error) {
+        console.error("[Resume Intelligence] processing status update failed", {
+          resumeIntelligenceError: markProcessingOps[0].error?.message,
+          evidenceSourceError: markProcessingOps[1].error?.message,
+        });
+      }
+
+      try {
+        const { data: resumeFileData, error: resumeDownloadError } =
+          await supabaseServer.storage
+            .from("candidate-resumes")
+            .download(resumeStoragePath);
+
+        if (resumeDownloadError || !resumeFileData) {
+          throw new Error("Resume file download failed.");
+        }
+
+        const resumeBytes = new Uint8Array(await resumeFileData.arrayBuffer());
+        const extractedResume =
+          await analyzeResumeFromPdfWithGemini(resumeBytes);
+
+        const completionOps = await Promise.all([
+          supabaseServer
+            .from("resume_intelligence")
+            .update({
+              professional_summary: extractedResume.professionalSummary,
+              skills: extractedResume.skills,
+              experience: extractedResume.experience,
+              projects: extractedResume.projects,
+              education: extractedResume.education,
+              certifications: extractedResume.certifications,
+              extraction_status: "completed",
+              extraction_error: null,
+            })
+            .eq("id", resumeIntelligenceRecord.id),
+          supabaseServer
+            .from("evidence_sources")
+            .update({ status: "processed" })
+            .eq("id", evidenceSourceRecord.id),
+        ]);
+
+        if (completionOps[0].error || completionOps[1].error) {
+          console.error("[Resume Intelligence] completion update failed", {
+            resumeIntelligenceError: completionOps[0].error?.message,
+            evidenceSourceError: completionOps[1].error?.message,
+          });
+        }
+      } catch (error) {
+        const extractionError = sanitizeResumeExtractionError(error);
+        console.error("[Resume Intelligence] extraction failed", {
+          message: extractionError,
+        });
+
+        const failOps = await Promise.all([
+          supabaseServer
+            .from("resume_intelligence")
+            .update({
+              extraction_status: "failed",
+              extraction_error: extractionError,
+            })
+            .eq("id", resumeIntelligenceRecord.id),
+          supabaseServer
+            .from("evidence_sources")
+            .update({ status: "failed" })
+            .eq("id", evidenceSourceRecord.id),
+        ]);
+
+        if (failOps[0].error || failOps[1].error) {
+          console.error("[Resume Intelligence] failure status update failed", {
+            resumeIntelligenceError: failOps[0].error?.message,
+            evidenceSourceError: failOps[1].error?.message,
+          });
+        }
+      }
     }
 
     // 8. Existing asynchronous AI evaluation
@@ -426,5 +584,3 @@ export async function submitApplication(
     };
   }
 }
-
-
