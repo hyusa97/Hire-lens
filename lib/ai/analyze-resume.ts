@@ -34,12 +34,14 @@ function cleanCodeFence(value: string) {
 function normalizeResumeIntelligence(value: unknown): ResumeIntelligenceResult {
   const parsed = resumeIntelligenceSchema.safeParse(value);
   if (!parsed.success) {
-    console.error("[Resume Intelligence] schema validation failed", {
-      issues: parsed.error.issues.map((issue) => ({
-        path: issue.path,
+    console.error(
+      "[Resume Intelligence] schema validation failed",
+      parsed.error.issues.map((issue) => ({
+        path: issue.path.join("."),
         message: issue.message,
-      })),
-    });
+        code: issue.code,
+    })),
+  );
     throw new Error(
       parsed.error.issues.map((issue) => issue.message).join("; "),
     );
@@ -114,7 +116,7 @@ export async function analyzeResumeIntelligenceFromTextWithGemini(
       contents: prompt,
       config: {
         responseMimeType: "application/json",
-        maxOutputTokens: 1800,
+        maxOutputTokens: 5000,
       },
     }),
     "Resume intelligence extraction timed out",
@@ -136,4 +138,5 @@ export async function analyzeResumeFromPdfWithGemini(
 ): Promise<ResumeIntelligenceResult> {
   const normalizedResumeText = await extractResumeTextFromPdfWithGemini(pdfBytes);
   return analyzeResumeIntelligenceFromTextWithGemini(normalizedResumeText);
+ 
 }

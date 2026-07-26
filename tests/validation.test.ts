@@ -141,6 +141,33 @@ const tests: Array<[string, () => void]> = [
 
     assert.equal(result.success, true);
   }],
+
+  ["accepts null professionalSummary", () => {
+    const result = resumeIntelligenceSchema.safeParse({
+      ...validResumeIntelligence,
+      professionalSummary: null,
+    });
+
+    assert.equal(result.success, true);
+
+    if (result.success) {
+      assert.equal(result.data.professionalSummary, null);
+    }
+  }],
+
+  ["normalizes empty professionalSummary to null", () => {
+    const result = resumeIntelligenceSchema.safeParse({
+      ...validResumeIntelligence,
+      professionalSummary: "",
+    });
+
+    assert.equal(result.success, true);
+
+    if (result.success) {
+      assert.equal(result.data.professionalSummary, null);
+    }
+  }],
+
   ["rejects invalid resume intelligence shape", () => {
     const result = resumeIntelligenceSchema.safeParse({
       ...validResumeIntelligence,

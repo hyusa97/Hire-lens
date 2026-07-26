@@ -49,12 +49,22 @@ export const resumeCertificationSchema = z.object({
 });
 
 export const resumeIntelligenceSchema = z.object({
-  professionalSummary: z.string().trim().min(1),
+  professionalSummary: z.preprocess(
+    (value) => {
+      if (typeof value === "string" && value.trim() === "") {
+        return null;
+      }
+
+      return value;
+    },
+    z.string().trim().min(1).nullable(),
+  ),
   skills: z.array(resumeSkillSchema).default([]),
   experience: z.array(resumeExperienceSchema).default([]),
   projects: z.array(resumeProjectSchema).default([]),
   education: z.array(resumeEducationSchema).default([]),
   certifications: z.array(resumeCertificationSchema).default([]),
+  
 });
 
 export type ResumeIntelligenceResult = z.infer<typeof resumeIntelligenceSchema>;
