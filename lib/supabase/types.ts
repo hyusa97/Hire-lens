@@ -39,6 +39,55 @@ export type EvidenceSource = {
   updated_at: string;
 };
 
+export type ResumeSkill = {
+  name: string;
+  evidence: string[];
+};
+
+export type ResumeExperience = {
+  company: string;
+  role: string;
+  startDate: string | null;
+  endDate: string | null;
+  description: string;
+  skills: string[];
+};
+
+export type ResumeProject = {
+  name: string;
+  description: string;
+  technologies: string[];
+  evidence: string[];
+};
+
+export type ResumeEducation = {
+  institution: string;
+  degree: string;
+  field: string | null;
+  startDate: string | null;
+  endDate: string | null;
+};
+
+export type ResumeCertification = {
+  name: string;
+  issuer: string | null;
+};
+
+export type ResumeIntelligence = {
+  id: string;
+  evidence_source_id: string;
+  professional_summary: string | null;
+  skills: ResumeSkill[];
+  experience: ResumeExperience[];
+  projects: ResumeProject[];
+  education: ResumeEducation[];
+  certifications: ResumeCertification[];
+  extraction_status: "pending" | "processing" | "completed" | "failed";
+  extraction_error: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Application = {
   id: string;
   job_id: string;
@@ -83,6 +132,18 @@ export type Database = {
         };
         Update: Partial<Omit<EvidenceSource, "id" | "candidate_id" | "created_at">>;
         Relationships: [];
+      };
+      resume_intelligence: {
+        Row: ResumeIntelligence;
+        Insert: Partial<
+        Omit<ResumeIntelligence, "id" | "created_at" | "updated_at">
+      > & {
+        evidence_source_id: string;
+      };
+      Update: Partial<
+        Omit<ResumeIntelligence, "id" | "evidence_source_id" | "created_at">
+      >;
+      Relationships: [];
       };
     };
     Views: Record<string, never>;
