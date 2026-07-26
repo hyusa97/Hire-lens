@@ -2,8 +2,9 @@
 
 import { useActionState, useState } from "react";
 import Link from "next/link";
-import { submitApplication, type ApplicationFormState, type ApplicationFormValues } from "@/lib/supabase/applications";
-
+import { submitApplication } from "@/lib/supabase/applications";
+import type { ApplicationFormState } from "@/lib/validation/application-form-state";
+import type { ApplicationFormValues } from "@/lib/validation/applications";
 export function ApplicationForm({ jobId, jobTitle }: { jobId: string; jobTitle: string }) {
   const initialValues: ApplicationFormValues = {
     name: "",
@@ -129,6 +130,25 @@ export function ApplicationForm({ jobId, jobTitle }: { jobId: string; jobTitle: 
               placeholder="5"
             />
             {state.errors.experienceYears ? <span className="mt-2 block text-sm text-red-600">{state.errors.experienceYears}</span> : null}
+          </label>
+
+          <label className="block text-sm font-medium text-slate-700 md:col-span-2">
+            <span className="mb-2 block">Resume</span>
+
+            <input
+              type="file"
+              name="resume"
+              accept=".pdf,application/pdf"
+              required
+              className="block w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700
+              file:mr-4 file:rounded-full file:border-0 file:bg-indigo-50 file:px-4 file:py-2
+              file:text-sm file:font-semibold file:text-indigo-700
+              hover:file:bg-indigo-100"
+            />
+
+            <span className="mt-2 block text-sm text-slate-500">
+              Upload your resume as a PDF. Maximum file size: 5 MB.
+            </span>
           </label>
 
           <label className="block text-sm font-medium text-slate-700 md:col-span-2">

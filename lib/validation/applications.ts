@@ -1,4 +1,13 @@
 import { z } from "zod";
+const MAX_RESUME_SIZE = 5 * 1024 * 1024;
+const ALLOWED_RESUME_TYPES = ["application/pdf"];
+
+export type ApplicationFormState = {
+  success: boolean;
+  message: string;
+  errors: Partial<Record<keyof ApplicationFormValues, string>>;
+  values: ApplicationFormValues;
+};
 
 export type ApplicationFormValues = {
   name: string;
@@ -54,4 +63,32 @@ export function parseApplicationValues(values: ApplicationFormValues) {
     githubUrl: values.githubUrl.trim(),
     portfolioUrl: values.portfolioUrl.trim(),
   });
+}
+
+export function validateResumeFile(value: FormDataEntryValue | null) {
+  if (!(value instanceof File) || value.size === 0) {
+    return {
+      success: false as const,
+      error: "Please upload your resume.",
+    };
+  }
+
+  if (!ALLOWED_RESUME_TYPES.includes(value.type)) {
+    return {
+      success: false as const,
+      error: "Resume must be a PDF file.",
+    };
+  }
+
+  if (value.size > MAX_RESUME_SIZE) {
+    return {
+      success: false as const,
+      error: "Resume must be 5 MB or smaller.",
+    };
+  }
+
+  return {
+    success: true as const,
+    file: value,
+  };
 }

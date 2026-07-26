@@ -26,6 +26,19 @@ export type Candidate = {
   created_at: string;
 };
 
+export type EvidenceSource = {
+  id: string;
+  candidate_id: string;
+  source_type: "resume" | "github" | "portfolio" | "certification";
+  source_url: string | null;
+  storage_path: string | null;
+  original_filename: string | null;
+  mime_type: string | null;
+  status: "uploaded" | "processing" | "processed" | "failed";
+  created_at: string;
+  updated_at: string;
+};
+
 export type Application = {
   id: string;
   job_id: string;
@@ -60,6 +73,15 @@ export type Database = {
         Row: Application;
         Insert: Partial<Omit<Application, "id" | "created_at">>;
         Update: Partial<Omit<Application, "id" | "created_at">>;
+        Relationships: [];
+      };
+      evidence_sources: {
+        Row: EvidenceSource;
+        Insert: Partial<Omit<EvidenceSource, "id" | "created_at" | "updated_at">> & {
+          candidate_id: string;
+          source_type: EvidenceSource["source_type"];
+        };
+        Update: Partial<Omit<EvidenceSource, "id" | "candidate_id" | "created_at">>;
         Relationships: [];
       };
     };

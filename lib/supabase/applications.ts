@@ -3,20 +3,18 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { analyzeCandidateWithGemini } from "../ai/analyze-candidate";
-import { parseApplicationValues, type ApplicationFormValues } from "../validation/applications";
+import {
+  parseApplicationValues,
+  validateResumeFile,
+} from "../validation/applications";
+import type { ApplicationFormValues } from "../validation/applications";
 
-export type { ApplicationFormValues };
+
 import { supabase } from "./client";
 import { getActiveJobById } from "./jobs";
 import { supabaseServer } from "./server-client";
 import type { Database } from "./types";
-
-export type ApplicationFormState = {
-  success: boolean;
-  message: string;
-  errors: Partial<Record<keyof ApplicationFormValues, string>>;
-  values: ApplicationFormValues;
-};
+import type { ApplicationFormState } from "../validation/application-form-state";
 
 function getInitialState(values: ApplicationFormValues): ApplicationFormState {
   return {
@@ -47,9 +45,12 @@ export async function submitApplication(
   };
 
   const parsed = parseApplicationValues(values);
+  const resumeValidation = validateResumeFile(formData.get("resume"));
 
+  // 1. Validate candidate/application form fields
   if (!parsed.success) {
     const fieldErrors = parsed.error.flatten().fieldErrors;
+
     return {
       success: false,
       message: "Please correct the highlighted fields and try again.",
@@ -67,7 +68,21 @@ export async function submitApplication(
     };
   }
 
+  // 2. Validate resume before trying to use resumeValidation.file
+  if (!resumeValidation.success) {
+    return {
+      ...getInitialState(values),
+      success: false,
+      message: resumeValidation.error,
+    };
+  }
+
+  // From this point onward TypeScript knows resumeValidation.file exists.
+  const resumeFile = resumeValidation.file;
+
+  // 3. Validate job
   const jobId = formData.get("jobId")?.toString();
+
   if (!jobId) {
     return {
       ...getInitialState(values),
@@ -77,6 +92,7 @@ export async function submitApplication(
   }
 
   const activeJob = await getActiveJobById(jobId);
+
   if (!activeJob) {
     return {
       ...getInitialState(values),
@@ -85,7 +101,9 @@ export async function submitApplication(
     };
   }
 
+  // 4. Generate candidate ID before database/storage operations
   const candidateId = randomUUID();
+
   type CandidateInsertPayload = {
     id: string;
     name: string;
@@ -111,9 +129,14 @@ export async function submitApplication(
   };
 
   try {
+    // 5. Insert candidate
     const { error: candidateError } = await supabase
       .from("candidates")
-      .insert(candidatePayload as Database["public"]["Tables"]["candidates"]["Insert"] & { id: string });
+      .insert(
+        candidatePayload as Database["public"]["Tables"]["candidates"]["Insert"] & {
+          id: string;
+        },
+      );
 
     if (candidateError) {
       console.error("[submitApplication] candidate insert failed", {
@@ -126,24 +149,90 @@ export async function submitApplication(
       return {
         ...getInitialState(values),
         success: false,
-        message: "We could not save your profile right now. Please try again shortly.",
+        message:
+          "We could not save your profile right now. Please try again shortly.",
       };
     }
 
-    const applicationPayload: Database["public"]["Tables"]["applications"]["Insert"] = {
-      job_id: jobId,
+    // 6. Upload validated resume AFTER candidate exists
+    const resumeStoragePath = `${candidateId}/${randomUUID()}.pdf`;
+
+    const resumeBuffer = Buffer.from(await resumeFile.arrayBuffer());
+
+    const { error: resumeUploadError } = await supabaseServer.storage
+      .from("candidate-resumes")
+      .upload(resumeStoragePath, resumeBuffer, {
+        contentType: "application/pdf",
+        upsert: false,
+      });
+
+    if (resumeUploadError) {
+      console.error("[submitApplication] resume upload failed", {
+        message: resumeUploadError.message,
+      });
+
+      // Roll back candidate because application creation cannot continue.
+      await supabase.from("candidates").delete().eq("id", candidateId);
+
+      return {
+        ...getInitialState(values),
+        success: false,
+        message:
+          "We could not upload your resume right now. Please try again shortly.",
+      };
+    }
+    const evidencePayload: Database["public"]["Tables"]["evidence_sources"]["Insert"] = {
       candidate_id: candidateId,
-      status: "pending",
-      match_score: null,
-      matched_skills: [],
-      missing_skills: [],
-      strengths: [],
-      concerns: [],
-      ai_summary: null,
-      recommendation: null,
+      source_type: "resume",
+      storage_path: resumeStoragePath,
+      original_filename: resumeFile.name,
+      mime_type: resumeFile.type,
+      status: "uploaded",
     };
 
-    const { error: applicationError } = await supabase.from("applications").insert(applicationPayload);
+    const { error: evidenceError } = await supabaseServer
+      .from("evidence_sources")
+      .insert(evidencePayload);
+
+    if (evidenceError) {
+      console.error("[submitApplication] evidence source insert failed", {
+        message: evidenceError.message,
+        code: evidenceError.code,
+        details: evidenceError.details,
+        hint: evidenceError.hint,
+      });
+
+      await supabaseServer.storage
+        .from("candidate-resumes")
+        .remove([resumeStoragePath]);
+
+      await supabase.from("candidates").delete().eq("id", candidateId);
+
+      return {
+        ...getInitialState(values),
+        success: false,
+        message: "We could not save your resume information right now. Please try again shortly.",
+      };
+    }
+
+    // 7. Insert application
+    const applicationPayload: Database["public"]["Tables"]["applications"]["Insert"] =
+      {
+        job_id: jobId,
+        candidate_id: candidateId,
+        status: "pending",
+        match_score: null,
+        matched_skills: [],
+        missing_skills: [],
+        strengths: [],
+        concerns: [],
+        ai_summary: null,
+        recommendation: null,
+      };
+
+    const { error: applicationError } = await supabase
+      .from("applications")
+      .insert(applicationPayload);
 
     if (applicationError) {
       console.error("[submitApplication] application insert failed", {
@@ -153,54 +242,90 @@ export async function submitApplication(
         hint: applicationError?.hint,
       });
 
+      // Clean up uploaded resume because the application failed.
+      const { error: resumeCleanupError } = await supabaseServer.storage
+        .from("candidate-resumes")
+        .remove([resumeStoragePath]);
+
+      if (resumeCleanupError) {
+        console.error("[submitApplication] resume cleanup failed", {
+          message: resumeCleanupError.message,
+        });
+      }
+
+      // Clean up candidate as part of rollback.
       await supabase.from("candidates").delete().eq("id", candidateId);
 
       if (isDuplicateApplicationError(applicationError)) {
         return {
           ...getInitialState(values),
           success: false,
-          message: "You have already applied for this role. We will keep your application under review.",
+          message:
+            "You have already applied for this role. We will keep your application under review.",
         };
       }
 
       return {
         ...getInitialState(values),
         success: false,
-        message: "We could not submit your application right now. Please try again shortly.",
+        message:
+          "We could not submit your application right now. Please try again shortly.",
       };
     }
 
+    // 8. Existing asynchronous AI evaluation
     void (async () => {
       try {
-        const { data: applicationRecord, error: applicationLookupError } = await supabaseServer
+        const {
+          data: applicationRecord,
+          error: applicationLookupError,
+        } = await supabaseServer
           .from("applications")
           .select("id, job_id, candidate_id, status")
           .eq("candidate_id", candidateId)
           .eq("job_id", jobId)
           .maybeSingle();
 
-        const { data: candidateRecord, error: candidateLookupError } = await supabaseServer
+        const {
+          data: candidateRecord,
+          error: candidateLookupError,
+        } = await supabaseServer
           .from("candidates")
           .select("skills, experience_years, profile_summary")
           .eq("id", candidateId)
           .maybeSingle();
 
-        const { data: jobRecord, error: jobLookupError } = await supabaseServer
+        const {
+          data: jobRecord,
+          error: jobLookupError,
+        } = await supabaseServer
           .from("jobs")
-          .select("title, department, description, requirements, required_skills, experience_level")
+          .select(
+            "title, department, description, requirements, required_skills, experience_level",
+          )
           .eq("id", jobId)
           .maybeSingle();
 
-        if (applicationLookupError || candidateLookupError || jobLookupError || !applicationRecord || !candidateRecord || !jobRecord) {
+        if (
+          applicationLookupError ||
+          candidateLookupError ||
+          jobLookupError ||
+          !applicationRecord ||
+          !candidateRecord ||
+          !jobRecord
+        ) {
           console.error("[AI Evaluation] records load failed", {
             applicationLookupError: applicationLookupError?.message,
             candidateLookupError: candidateLookupError?.message,
             jobLookupError: jobLookupError?.message,
           });
+
           return;
         }
 
-        console.info("[AI Evaluation] records loaded", { applicationId: applicationRecord.id });
+        console.info("[AI Evaluation] records loaded", {
+          applicationId: applicationRecord.id,
+        });
 
         const evaluation = await analyzeCandidateWithGemini(
           {
@@ -218,17 +343,22 @@ export async function submitApplication(
           },
         );
 
-        console.info("[AI Evaluation] schema validated", { applicationId: applicationRecord.id });
+        console.info("[AI Evaluation] schema validated", {
+          applicationId: applicationRecord.id,
+        });
 
-        const { error: updateError } = await supabaseServer.from("applications").update({
-          match_score: evaluation.matchScore,
-          matched_skills: evaluation.matchedSkills,
-          missing_skills: evaluation.missingSkills,
-          strengths: evaluation.strengths,
-          concerns: evaluation.concerns,
-          ai_summary: evaluation.summary,
-          recommendation: evaluation.recommendation,
-        }).eq("id", applicationRecord.id);
+        const { error: updateError } = await supabaseServer
+          .from("applications")
+          .update({
+            match_score: evaluation.matchScore,
+            matched_skills: evaluation.matchedSkills,
+            missing_skills: evaluation.missingSkills,
+            strengths: evaluation.strengths,
+            concerns: evaluation.concerns,
+            ai_summary: evaluation.summary,
+            recommendation: evaluation.recommendation,
+          })
+          .eq("id", applicationRecord.id);
 
         if (updateError) {
           console.error("[AI Evaluation] database update failed", {
@@ -237,23 +367,37 @@ export async function submitApplication(
             details: updateError.details,
             hint: updateError.hint,
           });
+
           return;
         }
 
-        console.info("[AI Evaluation] database update completed", { applicationId: applicationRecord.id });
+        console.info("[AI Evaluation] database update completed", {
+          applicationId: applicationRecord.id,
+        });
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Unknown AI evaluation error";
-        const name = error instanceof Error ? error.name : "UnknownError";
-        console.error("[AI Evaluation] unexpected failure", { name, message });
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Unknown AI evaluation error";
+
+        const name =
+          error instanceof Error ? error.name : "UnknownError";
+
+        console.error("[AI Evaluation] unexpected failure", {
+          name,
+          message,
+        });
       }
     })();
 
+    // 9. Revalidate pages
     revalidatePath("/jobs");
     revalidatePath(`/jobs/${jobId}`);
 
     return {
       success: true,
-      message: "Your application has been received. We will review it shortly.",
+      message:
+        "Your application has been received. We will review it shortly.",
       errors: {},
       values: {
         name: "",
@@ -266,11 +410,19 @@ export async function submitApplication(
         portfolioUrl: "",
       },
     };
-  } catch {
+  } catch (error) {
+    console.error("[submitApplication] unexpected failure", {
+      message:
+        error instanceof Error
+          ? error.message
+          : "Unknown application submission error",
+    });
+
     return {
       ...getInitialState(values),
       success: false,
-      message: "We hit a network issue while submitting your application. Please try again shortly.",
+      message:
+        "We hit a network issue while submitting your application. Please try again shortly.",
     };
   }
 }
