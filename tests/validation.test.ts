@@ -10,6 +10,7 @@ import { collectApplicationSkillEvidence } from "../lib/evidence/collect-applica
 import { collectResumeSkillEvidence } from "../lib/evidence/collect-resume-skills";
 import { collectGitHubSkillEvidence } from "../lib/evidence/collect-github-skills";
 import { aggregateSkillEvidence } from "../lib/evidence/aggregate-skill-evidence";
+import { parseJsonResponse } from "../lib/ai/parse-json-response";
 
 
 
@@ -879,6 +880,56 @@ const tests: Array<[string, () => void]> = [
     assert.equal(
       result[0]?.verificationStatus,
       "partially_supported",
+    );
+  },
+],
+
+[
+  "parses valid AI JSON responses",
+  () => {
+    const result = parseJsonResponse(
+      '{"matchScore":75,"recommendation":"GOOD_MATCH"}',
+    );
+
+    assert.deepEqual(result, {
+      matchScore: 75,
+      recommendation: "GOOD_MATCH",
+    });
+  },
+],
+
+[
+  "parses JSON wrapped in markdown fences",
+  () => {
+    const result = parseJsonResponse(
+      '```json\n{"matchScore":75}\n```',
+    );
+
+    assert.deepEqual(result, {
+      matchScore: 75,
+    });
+  },
+],
+
+[
+  "rejects malformed AI JSON",
+  () => {
+    assert.throws(
+      () =>
+        parseJsonResponse(
+          '{"matchScore": -}',
+        ),
+      /AI returned malformed JSON/,
+    );
+  },
+],
+
+[
+  "rejects empty AI responses",
+  () => {
+    assert.throws(
+      () => parseJsonResponse("   "),
+      /AI response was empty/,
     );
   },
 ],
