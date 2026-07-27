@@ -11,6 +11,9 @@ import { collectResumeSkillEvidence } from "../lib/evidence/collect-resume-skill
 import { collectGitHubSkillEvidence } from "../lib/evidence/collect-github-skills";
 import { aggregateSkillEvidence } from "../lib/evidence/aggregate-skill-evidence";
 import { parseJsonResponse } from "../lib/ai/parse-json-response";
+import { matchJobSkills } from "../lib/matching/match-job-skills";
+import type { CandidateSkillEvidence } from "../lib/supabase/types";
+import { summarizeJobMatch } from "../lib/matching/summarize-job-match";
 
 
 
@@ -202,6 +205,65 @@ const githubRepositoryEvidenceFixture = {
   created_at: "2026-01-01T00:00:00.000Z",
 };
 
+const candidateSkillEvidenceFixture: CandidateSkillEvidence[] = [
+  {
+    id: "skill-python",
+    candidate_id: "candidate-1",
+    canonical_skill: "python",
+    display_name: "Python",
+
+    claimed_in_application: true,
+    observed_in_resume: true,
+    observed_in_github: true,
+
+    evidence_strength: "strong",
+    verification_status: "supported",
+
+    evidence_count: 6,
+    source_count: 3,
+
+    created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-01-01T00:00:00.000Z",
+  },
+  {
+  id: "skill-react",
+  candidate_id: "candidate-1",
+  canonical_skill: "react",
+  display_name: "React",
+
+  claimed_in_application: true,
+  observed_in_resume: false,
+  observed_in_github: true,
+
+  evidence_strength: "strong",
+  verification_status: "partially_supported",
+
+  evidence_count: 6,
+  source_count: 2,
+
+  created_at: "2026-01-01T00:00:00.000Z",
+  updated_at: "2026-01-01T00:00:00.000Z",
+},
+{
+  id: "skill-docker",
+  candidate_id: "candidate-1",
+  canonical_skill: "docker",
+  display_name: "Docker",
+
+  claimed_in_application: true,
+  observed_in_resume: false,
+  observed_in_github: false,
+
+  evidence_strength: "weak",
+  verification_status: "unverified",
+
+  evidence_count: 1,
+  source_count: 1,
+
+  created_at: "2026-01-01T00:00:00.000Z",
+  updated_at: "2026-01-01T00:00:00.000Z",
+},
+];
 
 
 const tests: Array<[string, () => void]> = [
@@ -931,6 +993,168 @@ const tests: Array<[string, () => void]> = [
       () => parseJsonResponse("   "),
       /AI response was empty/,
     );
+  },
+],
+
+[
+  "classifies strongly verified job skills as verified matches",
+  () => {
+    const result = matchJobSkills(
+      ["Python"],
+      candidateSkillEvidenceFixture,
+    );
+
+    assert.equal(result.length, 1);
+    assert.equal(result[0]?.requiredSkill, "Python");
+    assert.equal(result[0]?.canonicalSkill, "python");
+    assert.equal(result[0]?.status, "verified_match");
+    assert.equal(result[0]?.evidenceCount, 6);
+    assert.equal(result[0]?.sourceCount, 3);
+  },
+],
+[
+  "classifies independently observed skills as supported matches",
+  () => {
+    const result = matchJobSkills(
+      ["React"],
+      candidateSkillEvidenceFixture,
+    );
+
+    assert.equal(result.length, 1);
+    assert.equal(result[0]?.canonicalSkill, "react");
+    assert.equal(result[0]?.status, "supported_match");
+    assert.equal(result[0]?.claimedInApplication, true);
+    assert.equal(result[0]?.observedInResume, false);
+    assert.equal(result[0]?.observedInGitHub, true);
+    assert.equal(
+      result[0]?.verificationStatus,
+      "partially_supported",
+    );
+  },
+],
+[
+  "classifies application-only skills as claimed matches",
+  () => {
+    const result = matchJobSkills(
+      ["Docker"],
+      candidateSkillEvidenceFixture,
+    );
+
+    assert.equal(result.length, 1);
+    assert.equal(result[0]?.canonicalSkill, "docker");
+    assert.equal(result[0]?.status, "claimed_match");
+
+    assert.equal(result[0]?.claimedInApplication, true);
+    assert.equal(result[0]?.observedInResume, false);
+    assert.equal(result[0]?.observedInGitHub, false);
+
+    assert.equal(result[0]?.evidenceStrength, "weak");
+    assert.equal(
+      result[0]?.verificationStatus,
+      "unverified",
+    );
+  },
+],
+[
+  "classifies known skills without candidate evidence as missing",
+  () => {
+    const result = matchJobSkills(
+      ["MongoDB"],
+      candidateSkillEvidenceFixture,
+    );
+
+    assert.equal(result.length, 1);
+    assert.equal(result[0]?.requiredSkill, "MongoDB");
+    assert.equal(result[0]?.canonicalSkill, "mongodb");
+    assert.equal(result[0]?.displayName, "MongoDB");
+
+    assert.equal(result[0]?.status, "missing");
+
+    assert.equal(result[0]?.claimedInApplication, false);
+    assert.equal(result[0]?.observedInResume, false);
+    assert.equal(result[0]?.observedInGitHub, false);
+
+    assert.equal(result[0]?.evidenceStrength, null);
+    assert.equal(result[0]?.verificationStatus, null);
+    assert.equal(result[0]?.evidenceCount, 0);
+    assert.equal(result[0]?.sourceCount, 0);
+  },
+],
+[
+  "does not treat unknown job requirements as missing skills",
+  () => {
+    const result = matchJobSkills(
+      ["Some Completely Unknown Framework"],
+      candidateSkillEvidenceFixture,
+    );
+
+    assert.equal(result.length, 1);
+
+    assert.equal(
+      result[0]?.requiredSkill,
+      "Some Completely Unknown Framework",
+    );
+
+    assert.equal(result[0]?.canonicalSkill, null);
+    assert.equal(
+      result[0]?.displayName,
+      "Some Completely Unknown Framework",
+    );
+
+    assert.equal(
+      result[0]?.status,
+      "unmapped_requirement",
+    );
+
+    assert.equal(result[0]?.evidenceStrength, null);
+    assert.equal(result[0]?.verificationStatus, null);
+    assert.equal(result[0]?.evidenceCount, 0);
+    assert.equal(result[0]?.sourceCount, 0);
+  },
+],
+[
+  "matches job skill aliases against canonical candidate evidence",
+  () => {
+    const result = matchJobSkills(
+      ["React.js"],
+      candidateSkillEvidenceFixture,
+    );
+
+    assert.equal(result.length, 1);
+
+    assert.equal(result[0]?.requiredSkill, "React.js");
+    assert.equal(result[0]?.canonicalSkill, "react");
+    assert.equal(result[0]?.displayName, "React");
+
+    assert.equal(result[0]?.status, "supported_match");
+    assert.equal(result[0]?.observedInGitHub, true);
+  },
+],
+[
+  "summarizes job skill alignment across all match states",
+  () => {
+    const alignments = matchJobSkills(
+      [
+        "Python",
+        "React",
+        "Docker",
+        "MongoDB",
+        "Some Completely Unknown Framework",
+      ],
+      candidateSkillEvidenceFixture,
+    );
+
+    const summary = summarizeJobMatch(alignments);
+
+    assert.equal(summary.totalRequirements, 5);
+
+    assert.equal(summary.verifiedMatches, 1);
+    assert.equal(summary.supportedMatches, 1);
+    assert.equal(summary.claimedMatches, 1);
+    assert.equal(summary.missingRequirements, 1);
+    assert.equal(summary.unmappedRequirements, 1);
+
+    assert.equal(summary.evaluatedRequirements, 4);
   },
 ],
 
