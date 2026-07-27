@@ -124,6 +124,58 @@ export type GitHubRepositoryEvidence = {
   created_at: string;
 };
 
+export type CandidateSkillEvidence = {
+  id: string;
+  candidate_id: string;
+  canonical_skill: string;
+  display_name: string;
+
+  claimed_in_application: boolean;
+  observed_in_resume: boolean;
+  observed_in_github: boolean;
+
+  evidence_strength: "weak" | "moderate" | "strong";
+
+  verification_status:
+    | "unverified"
+    | "partially_supported"
+    | "supported";
+
+  evidence_count: number;
+  source_count: number;
+
+  created_at: string;
+  updated_at: string;
+};
+
+export type SkillEvidenceItem = {
+  id: string;
+  candidate_skill_evidence_id: string;
+
+  evidence_source_id: string | null;
+  repository_evidence_id: string | null;
+
+  evidence_type:
+    | "application_claim"
+    | "resume_skill"
+    | "resume_project"
+    | "resume_experience"
+    | "github_language"
+    | "github_dependency"
+    | "github_topic"
+    | "github_readme";
+
+  evidence_quality:
+    | "claimed"
+    | "contextual"
+    | "artifact";
+
+  source_reference: string | null;
+  description: string;
+
+  created_at: string;
+};
+
 export type Application = {
   id: string;
   job_id: string;
@@ -216,6 +268,48 @@ export type Database = {
           Omit<
             GitHubRepositoryEvidence,
             "id" | "github_intelligence_id" | "created_at"
+          >
+        >;
+        Relationships: [];
+      };
+            candidate_skill_evidence: {
+        Row: CandidateSkillEvidence;
+        Insert: Partial<
+          Omit<
+            CandidateSkillEvidence,
+            "id" | "created_at" | "updated_at"
+          >
+        > & {
+          candidate_id: string;
+          canonical_skill: string;
+          display_name: string;
+        };
+        Update: Partial<
+          Omit<
+            CandidateSkillEvidence,
+            "id" | "candidate_id" | "created_at"
+          >
+        >;
+        Relationships: [];
+      };
+
+      skill_evidence_items: {
+        Row: SkillEvidenceItem;
+        Insert: Partial<
+          Omit<
+            SkillEvidenceItem,
+            "id" | "created_at"
+          >
+        > & {
+          candidate_skill_evidence_id: string;
+          evidence_type: SkillEvidenceItem["evidence_type"];
+          evidence_quality: SkillEvidenceItem["evidence_quality"];
+          description: string;
+        };
+        Update: Partial<
+          Omit<
+            SkillEvidenceItem,
+            "id" | "candidate_skill_evidence_id" | "created_at"
           >
         >;
         Relationships: [];

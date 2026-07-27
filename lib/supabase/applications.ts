@@ -10,13 +10,14 @@ import {
 } from "../validation/applications";
 import type { ApplicationFormValues } from "../validation/applications";
 import { processCandidateGitHub } from "../github/process-candidate-github";
-
-
 import { supabase } from "./client";
 import { getActiveJobById } from "./jobs";
 import { supabaseServer } from "./server-client";
 import type { Database } from "./types";
 import type { ApplicationFormState } from "../validation/application-form-state";
+import { buildCandidateSkillEvidence } from "../evidence/build-candidate-skill-evidence";
+
+
 
 function getInitialState(values: ApplicationFormValues): ApplicationFormState {
   return {
@@ -450,6 +451,20 @@ export async function submitApplication(
               : "Unknown GitHub evidence processing error",
         });
       }
+    }
+
+    // Build deterministic cross-source candidate skill evidence.
+    // Failure here must not invalidate an otherwise successful application.
+    try {
+      await buildCandidateSkillEvidence(candidateId);
+    } catch (error) {
+      console.error("[Skill Evidence] build failed", {
+        candidateId,
+        message:
+          error instanceof Error
+          ? error.message
+          : "Unknown skill evidence aggregation error",
+      });
     }
 
     // 9. Existing asynchronous AI evaluation

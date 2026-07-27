@@ -5,6 +5,12 @@ import { createJobSchema } from "../lib/validation/jobs";
 import { extractGitHubUsername } from "../lib/github/username";
 import { selectRelevantRepositories } from "../lib/github/repositories";
 import type { GitHubRepository } from "../lib/github/profile";
+import { normalizeSkill } from "../lib/evidence/skill-taxonomy";
+import { collectApplicationSkillEvidence } from "../lib/evidence/collect-application-skills";
+import { collectResumeSkillEvidence } from "../lib/evidence/collect-resume-skills";
+import { collectGitHubSkillEvidence } from "../lib/evidence/collect-github-skills";
+import { aggregateSkillEvidence } from "../lib/evidence/aggregate-skill-evidence";
+
 
 
 
@@ -100,6 +106,102 @@ const githubRepositoryFixture: GitHubRepository = {
   updated_at: new Date().toISOString(),
   pushed_at: new Date().toISOString(),
 };
+
+const resumeEvidenceFixture = {
+  id: "resume-intelligence-1",
+  evidence_source_id: "resume-source-1",
+  professional_summary: null,
+
+  skills: [
+    {
+      name: "Python",
+      evidence: ["Listed in technical skills"],
+    },
+    {
+      name: "React.js",
+      evidence: [],
+    },
+  ],
+
+  experience: [
+    {
+      company: "Example Labs",
+      role: "Software Intern",
+      startDate: null,
+      endDate: null,
+      description: "Worked on internal applications.",
+      skills: ["Python", "Postgres"],
+    },
+  ],
+
+  projects: [
+    {
+      name: "Analytics Platform",
+      description: "Built an analytics application.",
+      technologies: ["Python", "pandas", "ReactJS"],
+      evidence: [],
+    },
+  ],
+
+  education: [],
+  certifications: [],
+
+  extraction_status: "completed" as const,
+  extraction_error: null,
+  created_at: "2026-01-01T00:00:00.000Z",
+  updated_at: "2026-01-01T00:00:00.000Z",
+};
+
+const githubEvidenceSourceFixture = {
+  id: "github-source-1",
+  candidate_id: "candidate-1",
+  source_type: "github" as const,
+  source_url: "https://github.com/example",
+  storage_path: null,
+  original_filename: null,
+  mime_type: null,
+  status: "processed" as const,
+  created_at: "2026-01-01T00:00:00.000Z",
+  updated_at: "2026-01-01T00:00:00.000Z",
+};
+
+const githubRepositoryEvidenceFixture = {
+  id: "repo-evidence-1",
+  github_intelligence_id: "github-intelligence-1",
+
+  repository_name: "example-project",
+  repository_url: "https://github.com/example/example-project",
+  description: null,
+
+  languages: {
+    TypeScript: 10000,
+    JavaScript: 2000,
+  },
+
+  topics: ["react", "unknown-topic"],
+
+  npm_dependencies: [
+    "next",
+    "react",
+    "@supabase/supabase-js",
+  ],
+
+  python_dependencies: [],
+
+  readme_excerpt: null,
+
+  has_package_json: true,
+  has_requirements_txt: false,
+  has_pyproject_toml: false,
+  has_dockerfile: false,
+  has_docker_compose: false,
+
+  evidence_score: 10,
+  pushed_at: null,
+  created_at: "2026-01-01T00:00:00.000Z",
+};
+
+
 
 const tests: Array<[string, () => void]> = [
   ["accepts a valid candidate application", () => {
@@ -293,6 +395,494 @@ const tests: Array<[string, () => void]> = [
 
   assert.equal(result[0].name, "technical-project");
 }],
+
+[
+  "normalizes React aliases to one canonical skill",
+  () => {
+    assert.deepEqual(normalizeSkill("React.js"), {
+      canonical: "react",
+      displayName: "React",
+    });
+
+    assert.deepEqual(normalizeSkill("reactjs"), {
+      canonical: "react",
+      displayName: "React",
+    });
+  },
+],
+
+[
+  "normalizes PostgreSQL aliases",
+  () => {
+    assert.deepEqual(normalizeSkill("Postgres"), {
+      canonical: "postgresql",
+      displayName: "PostgreSQL",
+    });
+  },
+],
+
+[
+  "normalizes scikit-learn aliases",
+  () => {
+    assert.deepEqual(normalizeSkill("sklearn"), {
+      canonical: "scikit-learn",
+      displayName: "Scikit-learn",
+    });
+  },
+],
+
+[
+  "normalizes skills case-insensitively",
+  () => {
+    assert.deepEqual(normalizeSkill("  PYTHON  "), {
+      canonical: "python",
+      displayName: "Python",
+    });
+  },
+],
+
+[
+  "does not confuse JavaScript with Java",
+  () => {
+    assert.equal(normalizeSkill("Java"), null);
+
+    assert.deepEqual(normalizeSkill("JavaScript"), {
+      canonical: "javascript",
+      displayName: "JavaScript",
+    });
+  },
+],
+
+[
+  "does not infer related technologies",
+  () => {
+    assert.deepEqual(normalizeSkill("Next.js"), {
+      canonical: "next.js",
+      displayName: "Next.js",
+    });
+
+    assert.notDeepEqual(
+      normalizeSkill("Next.js"),
+      normalizeSkill("React"),
+    );
+  },
+],
+
+[
+  "returns null for unknown skills",
+  () => {
+    assert.equal(
+      normalizeSkill("Some Totally Unknown Framework"),
+      null,
+    );
+  },
+],
+
+[
+  "returns null for empty input",
+  () => {
+    assert.equal(normalizeSkill("   "), null);
+  },
+],
+[
+  "collects normalized application skill evidence",
+  () => {
+    const result = collectApplicationSkillEvidence([
+      "Python",
+      "React.js",
+      "Postgres",
+    ]);
+
+    assert.deepEqual(
+      result.map((item) => item.canonicalSkill),
+      ["python", "react", "postgresql"],
+    );
+
+    assert.equal(result[0]?.origin, "application");
+    assert.equal(result[0]?.evidenceType, "application_claim");
+    assert.equal(result[0]?.evidenceQuality, "claimed");
+    assert.equal(result[0]?.evidenceSourceId, null);
+    assert.equal(result[0]?.repositoryEvidenceId, null);
+  },
+],
+
+[
+  "deduplicates equivalent application skill aliases",
+  () => {
+    const result = collectApplicationSkillEvidence([
+      "React",
+      "React.js",
+      "reactjs",
+    ]);
+
+    assert.equal(result.length, 1);
+    assert.equal(result[0]?.canonicalSkill, "react");
+  },
+],
+
+[
+  "ignores unknown application skills",
+  () => {
+    const result = collectApplicationSkillEvidence([
+      "Python",
+      "Unknown Framework 9000",
+    ]);
+
+    assert.equal(result.length, 1);
+    assert.equal(result[0]?.canonicalSkill, "python");
+  },
+],
+
+[
+  "returns no evidence for only unknown skills",
+  () => {
+    const result = collectApplicationSkillEvidence([
+      "Unknown Framework",
+      "Another Mystery Technology",
+    ]);
+
+    assert.deepEqual(result, []);
+  },
+],
+
+[
+  "collects explicit resume skill evidence",
+  () => {
+    const result = collectResumeSkillEvidence(resumeEvidenceFixture);
+
+    const pythonSkill = result.find(
+      (item) =>
+        item.canonicalSkill === "python" &&
+        item.evidenceType === "resume_skill",
+    );
+
+    assert.ok(pythonSkill);
+    assert.equal(pythonSkill.evidenceQuality, "claimed");
+    assert.equal(pythonSkill.origin, "resume");
+    assert.equal(
+      pythonSkill.evidenceSourceId,
+      "resume-source-1",
+    );
+  },
+],
+
+[
+  "collects contextual resume project evidence",
+  () => {
+    const result = collectResumeSkillEvidence(resumeEvidenceFixture);
+
+    const pandasProject = result.find(
+      (item) =>
+        item.canonicalSkill === "pandas" &&
+        item.evidenceType === "resume_project",
+    );
+
+    assert.ok(pandasProject);
+    assert.equal(pandasProject.evidenceQuality, "contextual");
+    assert.equal(
+      pandasProject.sourceReference,
+      "Analytics Platform",
+    );
+  },
+],
+
+[
+  "collects contextual resume experience evidence",
+  () => {
+    const result = collectResumeSkillEvidence(resumeEvidenceFixture);
+
+    const postgresExperience = result.find(
+      (item) =>
+        item.canonicalSkill === "postgresql" &&
+        item.evidenceType === "resume_experience",
+    );
+
+    assert.ok(postgresExperience);
+    assert.equal(
+      postgresExperience.sourceReference,
+      "Example Labs — Software Intern",
+    );
+  },
+],
+
+[
+  "keeps independent resume contexts for the same skill",
+  () => {
+    const result = collectResumeSkillEvidence(resumeEvidenceFixture);
+
+    const pythonEvidence = result.filter(
+      (item) => item.canonicalSkill === "python",
+    );
+
+    assert.equal(pythonEvidence.length, 3);
+
+    assert.deepEqual(
+      new Set(pythonEvidence.map((item) => item.evidenceType)),
+      new Set([
+        "resume_skill",
+        "resume_experience",
+        "resume_project",
+      ]),
+    );
+  },
+],
+
+[
+  "collects GitHub language artifact evidence",
+  () => {
+    const result = collectGitHubSkillEvidence(
+      githubEvidenceSourceFixture,
+      [githubRepositoryEvidenceFixture],
+    );
+
+    const typescript = result.find(
+      (item) =>
+        item.canonicalSkill === "typescript" &&
+        item.evidenceType === "github_language",
+    );
+
+    assert.ok(typescript);
+    assert.equal(typescript.evidenceQuality, "artifact");
+    assert.equal(typescript.origin, "github");
+    assert.equal(
+      typescript.repositoryEvidenceId,
+      "repo-evidence-1",
+    );
+  },
+],
+
+[
+  "maps known GitHub dependencies to canonical skills",
+  () => {
+    const result = collectGitHubSkillEvidence(
+      githubEvidenceSourceFixture,
+      [githubRepositoryEvidenceFixture],
+    );
+
+    const skills = new Set(
+      result
+        .filter(
+          (item) => item.evidenceType === "github_dependency",
+        )
+        .map((item) => item.canonicalSkill),
+    );
+
+    assert.ok(skills.has("next.js"));
+    assert.ok(skills.has("react"));
+    assert.ok(skills.has("supabase"));
+  },
+],
+
+[
+  "treats GitHub topics as contextual evidence",
+  () => {
+    const result = collectGitHubSkillEvidence(
+      githubEvidenceSourceFixture,
+      [githubRepositoryEvidenceFixture],
+    );
+
+    const reactTopic = result.find(
+      (item) =>
+        item.canonicalSkill === "react" &&
+        item.evidenceType === "github_topic",
+    );
+
+    assert.ok(reactTopic);
+    assert.equal(
+      reactTopic.evidenceQuality,
+      "contextual",
+    );
+  },
+],
+
+[
+  "does not infer parent skills from GitHub dependencies",
+  () => {
+    const pythonRepository = {
+      ...githubRepositoryEvidenceFixture,
+      id: "repo-evidence-python",
+      languages: {},
+      topics: [],
+      npm_dependencies: [],
+      python_dependencies: ["pandas"],
+    };
+
+    const result = collectGitHubSkillEvidence(
+      githubEvidenceSourceFixture,
+      [pythonRepository],
+    );
+
+    assert.ok(
+      result.some(
+        (item) => item.canonicalSkill === "pandas",
+      ),
+    );
+
+    assert.equal(
+      result.some(
+        (item) => item.canonicalSkill === "python",
+      ),
+      false,
+    );
+
+    assert.equal(
+      result.some(
+        (item) =>
+          item.canonicalSkill === "machine-learning",
+      ),
+      false,
+    );
+  },
+],
+
+[
+  "deduplicates the same GitHub skill evidence within one repository",
+  () => {
+    const repository = {
+      ...githubRepositoryEvidenceFixture,
+      topics: ["react", "reactjs"],
+    };
+
+    const result = collectGitHubSkillEvidence(
+      githubEvidenceSourceFixture,
+      [repository],
+    );
+
+    const reactTopics = result.filter(
+      (item) =>
+        item.canonicalSkill === "react" &&
+        item.evidenceType === "github_topic",
+    );
+
+    assert.equal(reactTopics.length, 1);
+  },
+],
+
+[
+  "marks application-only skill claims as weak and unverified",
+  () => {
+    const applicationEvidence =
+      collectApplicationSkillEvidence(["Python"]);
+
+    const result = aggregateSkillEvidence(applicationEvidence);
+
+    assert.equal(result.length, 1);
+    assert.equal(result[0]?.canonicalSkill, "python");
+    assert.equal(result[0]?.claimedInApplication, true);
+    assert.equal(result[0]?.evidenceStrength, "weak");
+    assert.equal(result[0]?.verificationStatus, "unverified");
+  },
+],
+
+[
+  "partially supports a claim corroborated by resume evidence",
+  () => {
+    const applicationEvidence =
+      collectApplicationSkillEvidence(["Python"]);
+
+    const resumeEvidence =
+      collectResumeSkillEvidence(resumeEvidenceFixture).filter(
+        (item) => item.canonicalSkill === "python",
+      );
+
+    const result = aggregateSkillEvidence([
+      ...applicationEvidence,
+      ...resumeEvidence,
+    ]);
+
+    assert.equal(result[0]?.verificationStatus, "partially_supported");
+    assert.equal(result[0]?.observedInResume, true);
+  },
+],
+
+[
+  "strongly supports a skill observed across resume and GitHub",
+  () => {
+    const applicationEvidence =
+      collectApplicationSkillEvidence(["React"]);
+
+    const resumeEvidence =
+      collectResumeSkillEvidence(resumeEvidenceFixture).filter(
+        (item) => item.canonicalSkill === "react",
+      );
+
+    const githubEvidence =
+      collectGitHubSkillEvidence(
+        githubEvidenceSourceFixture,
+        [githubRepositoryEvidenceFixture],
+      ).filter(
+        (item) => item.canonicalSkill === "react",
+      );
+
+    const result = aggregateSkillEvidence([
+      ...applicationEvidence,
+      ...resumeEvidence,
+      ...githubEvidence,
+    ]);
+
+    assert.equal(result[0]?.verificationStatus, "supported");
+    assert.equal(result[0]?.evidenceStrength, "strong");
+    assert.equal(result[0]?.sourceCount, 3);
+  },
+],
+
+[
+  "creates observed skills even when candidate did not claim them",
+  () => {
+    const githubEvidence =
+      collectGitHubSkillEvidence(
+        githubEvidenceSourceFixture,
+        [githubRepositoryEvidenceFixture],
+      ).filter(
+        (item) => item.canonicalSkill === "supabase",
+      );
+
+    const result = aggregateSkillEvidence(githubEvidence);
+
+    assert.equal(result[0]?.claimedInApplication, false);
+    assert.equal(result[0]?.observedInGitHub, true);
+    assert.equal(
+      result[0]?.verificationStatus,
+      "partially_supported",
+    );
+  },
+],
+
+[
+  "gives strong evidence to artifacts across multiple repositories",
+  () => {
+    const repositoryTwo = {
+      ...githubRepositoryEvidenceFixture,
+      id: "repo-evidence-2",
+      repository_name: "second-project",
+      npm_dependencies: ["react"],
+      topics: [],
+      languages: {},
+    };
+
+    const githubEvidence =
+      collectGitHubSkillEvidence(
+        githubEvidenceSourceFixture,
+        [
+          githubRepositoryEvidenceFixture,
+          repositoryTwo,
+        ],
+      ).filter(
+        (item) =>
+          item.canonicalSkill === "react" &&
+          item.evidenceType === "github_dependency",
+      );
+
+    const result = aggregateSkillEvidence(githubEvidence);
+
+    assert.equal(result[0]?.evidenceStrength, "strong");
+    assert.equal(
+      result[0]?.verificationStatus,
+      "partially_supported",
+    );
+  },
+],
+
 ];
 
 for (const [name, run] of tests) {
