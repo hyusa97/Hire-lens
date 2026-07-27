@@ -1,5 +1,14 @@
+//import "server-only";
+//import { supabaseServer } from "../supabase/server-client";
 import "server-only";
 import { supabaseServer } from "../supabase/server-client";
+import type {
+  ResumeSkill,
+  ResumeExperience,
+  ResumeProject,
+  ResumeEducation,
+  ResumeCertification,
+} from "../supabase/types";
 
 export type RecruiterApplicationSummary = {
   id: string;
@@ -66,49 +75,10 @@ export async function getRecruiterDashboardData(): Promise<RecruiterDashboardDat
   };
 }
 
-export async function getRecruiterApplications(limit = 100): Promise<RecruiterApplicationSummary[]> {
+export async function getRecruiterApplications(
+  limit = 100,
+): Promise<RecruiterApplicationSummary[]> {
   return getRecentApplications(limit);
-}
-
-export async function getRecruiterApplicationDetail(applicationId: string): Promise<RecruiterApplicationDetail | null> {
-  return getRecruiterApplicationById(applicationId);
-}
-
-export async function getRecentApplications(limit = 8): Promise<RecruiterApplicationSummary[]> {
-  const { data, error } = await supabaseServer
-    .from("applications")
-    .select("id, status, created_at, match_score, recommendation, job_id, candidate_id")
-    .order("created_at", { ascending: false })
-    .limit(limit);
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  if (!data || data.length === 0) {
-    return [];
-  }
-
-  const candidateIds = [...new Set(data.map((application) => application.candidate_id).filter(Boolean))];
-  const jobIds = [...new Set(data.map((application) => application.job_id).filter(Boolean))];
-
-  const [{ data: candidates }, { data: jobs }] = await Promise.all([
-    supabaseServer.from("candidates").select("id, name").in("id", candidateIds),
-    supabaseServer.from("jobs").select("id, title").in("id", jobIds),
-  ]);
-
-  const candidateMap = new Map((candidates ?? []).map((candidate) => [candidate.id, candidate.name]));
-  const jobMap = new Map((jobs ?? []).map((job) => [job.id, job.title]));
-
-  return (data ?? []).map((application) => ({
-    id: application.id,
-    status: application.status,
-    created_at: application.created_at,
-    match_score: application.match_score,
-    recommendation: application.recommendation,
-    job_title: application.job_id ? jobMap.get(application.job_id) ?? null : null,
-    candidate_name: application.candidate_id ? candidateMap.get(application.candidate_id) ?? null : null,
-  }));
 }
 
 export type RecruiterApplicationDetail = {
@@ -122,6 +92,7 @@ export type RecruiterApplicationDetail = {
   strengths: string[] | null;
   concerns: string[] | null;
   ai_summary: string | null;
+
   candidate: {
     id: string;
     name: string;
@@ -133,6 +104,7 @@ export type RecruiterApplicationDetail = {
     github_url: string | null;
     portfolio_url: string | null;
   } | null;
+
   job: {
     id: string;
     title: string;
@@ -140,12 +112,30 @@ export type RecruiterApplicationDetail = {
     location: string | null;
     required_skills: string[] | null;
   } | null;
+
+  resumeEvidence: {
+    sourceId: string;
+    filename: string | null;
+    sourceStatus: "uploaded" | "processing" | "processed" | "failed";
+    extractionStatus: "pending" | "processing" | "completed" | "failed";
+    extractionError: string | null;
+    professionalSummary: string | null;
+    skills: ResumeSkill[];
+    experience: ResumeExperience[];
+    projects: ResumeProject[];
+    education: ResumeEducation[];
+    certifications: ResumeCertification[];
+  } | null;
 };
 
-export async function getRecruiterApplicationById(applicationId: string): Promise<RecruiterApplicationDetail | null> {
+export async function getRecruiterApplicationById(
+  applicationId: string,
+): Promise<RecruiterApplicationDetail | null> {
   const { data: application, error } = await supabaseServer
     .from("applications")
-    .select("id, status, created_at, match_score, recommendation, matched_skills, missing_skills, strengths, concerns, ai_summary, candidate_id, job_id")
+    .select(
+      "id, status, created_at, match_score, recommendation, matched_skills, missing_skills, strengths, concerns, ai_summary, candidate_id, job_id",
+    )
     .eq("id", applicationId)
     .maybeSingle();
 
@@ -157,10 +147,44 @@ export async function getRecruiterApplicationById(applicationId: string): Promis
     return null;
   }
 
-  const [{ data: candidate }, { data: job }] = await Promise.all([
-    supabaseServer.from("candidates").select("id, name, email, phone, skills, experience_years, profile_summary, github_url, portfolio_url").eq("id", application.candidate_id).maybeSingle(),
-    supabaseServer.from("jobs").select("id, title, department, location, required_skills").eq("id", application.job_id).maybeSingle(),
+  const [
+    { data: candidate },
+    { data: job },
+    { data: resumeSource },
+  ] = await Promise.all([
+    supabaseServer
+      .from("candidates")
+      .select(
+        "id, name, email, phone, skills, experience_years, profile_summary, github_url, portfolio_url",
+      )
+      .eq("id", application.candidate_id)
+      .maybeSingle(),
+
+    supabaseServer
+      .from("jobs")
+      .select("id, title, department, location, required_skills")
+      .eq("id", application.job_id)
+      .maybeSingle(),
+
+    supabaseServer
+      .from("evidence_sources")
+      .select("id, original_filename, status")
+      .eq("candidate_id", application.candidate_id)
+      .eq("source_type", "resume")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
+
+  const { data: resumeIntelligence } = resumeSource
+    ? await supabaseServer
+        .from("resume_intelligence")
+        .select(
+          "professional_summary, skills, experience, projects, education, certifications, extraction_status, extraction_error",
+        )
+        .eq("evidence_source_id", resumeSource.id)
+        .maybeSingle()
+    : { data: null };
 
   return {
     id: application.id,
@@ -173,6 +197,7 @@ export async function getRecruiterApplicationById(applicationId: string): Promis
     strengths: application.strengths,
     concerns: application.concerns,
     ai_summary: application.ai_summary,
+
     candidate: candidate
       ? {
           id: candidate.id,
@@ -186,6 +211,7 @@ export async function getRecruiterApplicationById(applicationId: string): Promis
           portfolio_url: candidate.portfolio_url,
         }
       : null,
+
     job: job
       ? {
           id: job.id,
@@ -195,11 +221,110 @@ export async function getRecruiterApplicationById(applicationId: string): Promis
           required_skills: job.required_skills,
         }
       : null,
+
+    resumeEvidence:
+      resumeSource && resumeIntelligence
+        ? {
+            sourceId: resumeSource.id,
+            filename: resumeSource.original_filename,
+            sourceStatus: resumeSource.status,
+            extractionStatus: resumeIntelligence.extraction_status,
+            extractionError: resumeIntelligence.extraction_error,
+            professionalSummary: resumeIntelligence.professional_summary,
+            skills: resumeIntelligence.skills,
+            experience: resumeIntelligence.experience,
+            projects: resumeIntelligence.projects,
+            education: resumeIntelligence.education,
+            certifications: resumeIntelligence.certifications,
+          }
+        : null,
   };
 }
 
-export async function updateRecruiterApplicationStatus(applicationId: string, status: "pending" | "reviewing" | "shortlisted" | "rejected") {
-  const { error } = await supabaseServer.from("applications").update({ status }).eq("id", applicationId);
+export async function getRecentApplications(
+  limit = 8,
+): Promise<RecruiterApplicationSummary[]> {
+  const { data, error } = await supabaseServer
+    .from("applications")
+    .select(
+      "id, status, created_at, match_score, recommendation, job_id, candidate_id",
+    )
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (!data || data.length === 0) {
+    return [];
+  }
+
+  const candidateIds = [
+    ...new Set(
+      data
+        .map((application) => application.candidate_id)
+        .filter(Boolean),
+    ),
+  ];
+
+  const jobIds = [
+    ...new Set(
+      data
+        .map((application) => application.job_id)
+        .filter(Boolean),
+    ),
+  ];
+
+  const [{ data: candidates }, { data: jobs }] = await Promise.all([
+    supabaseServer
+      .from("candidates")
+      .select("id, name")
+      .in("id", candidateIds),
+
+    supabaseServer
+      .from("jobs")
+      .select("id, title")
+      .in("id", jobIds),
+  ]);
+
+  const candidateMap = new Map(
+    (candidates ?? []).map((candidate) => [
+      candidate.id,
+      candidate.name,
+    ]),
+  );
+
+  const jobMap = new Map(
+    (jobs ?? []).map((job) => [
+      job.id,
+      job.title,
+    ]),
+  );
+
+  return (data ?? []).map((application) => ({
+    id: application.id,
+    status: application.status,
+    created_at: application.created_at,
+    match_score: application.match_score,
+    recommendation: application.recommendation,
+    job_title: application.job_id
+      ? jobMap.get(application.job_id) ?? null
+      : null,
+    candidate_name: application.candidate_id
+      ? candidateMap.get(application.candidate_id) ?? null
+      : null,
+  }));
+}
+
+export async function updateRecruiterApplicationStatus(
+  applicationId: string,
+  status: "pending" | "reviewing" | "shortlisted" | "rejected",
+) {
+  const { error } = await supabaseServer
+    .from("applications")
+    .update({ status })
+    .eq("id", applicationId);
 
   if (error) {
     throw new Error(error.message);

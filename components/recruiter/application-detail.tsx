@@ -27,6 +27,27 @@ function StatusBadge({ status }: { status: string }) {
   return <span className={`rounded-full px-3 py-1 text-xs font-medium capitalize ${tone}`}>{status}</span>;
 }
 
+function EvidenceStatusBadge({
+  status,
+}: {
+  status: "uploaded" | "processing" | "processed" | "failed";
+}) {
+  const tone = {
+    uploaded: "bg-slate-100 text-slate-700",
+    processing: "bg-amber-50 text-amber-700",
+    processed: "bg-emerald-50 text-emerald-700",
+    failed: "bg-rose-50 text-rose-700",
+  }[status];
+
+  return (
+    <span
+      className={`rounded-full px-3 py-1 text-xs font-medium capitalize ${tone}`}
+    >
+      {status}
+    </span>
+  );
+}
+
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString("en", { month: "long", day: "numeric", year: "numeric" });
 }
@@ -131,6 +152,225 @@ export function ApplicationDetailView({ application, onStatusChange }: Applicati
           AI analysis is decision support only. Final hiring decisions remain with the recruiter.
         </p>
       </Section>
+
+      <Section title="Resume evidence">
+        {!application.resumeEvidence ? (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6">
+            <p className="font-medium text-slate-900">No resume evidence available</p>
+            <p className="mt-1 text-sm text-slate-600">
+              This application does not have processed resume intelligence yet.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-8">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-slate-50 p-4">
+              <div>
+                <p className="font-semibold text-slate-900">
+                  {application.resumeEvidence.filename ?? "Candidate resume"}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Evidence extracted from the candidate&apos;s uploaded resume.
+                </p>
+              </div>
+
+              <EvidenceStatusBadge status={application.resumeEvidence.sourceStatus} />
+            </div>
+
+            {application.resumeEvidence.extractionStatus === "processing" ||
+            application.resumeEvidence.extractionStatus === "pending" ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800">
+                Resume intelligence is still being processed.
+              </div>
+            ) : null}
+
+            {application.resumeEvidence.extractionStatus === "failed" ? (
+              <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
+                <p className="font-semibold text-rose-800">Resume intelligence unavailable</p>
+                <p className="mt-1 text-sm text-rose-700">
+                  The resume was received, but structured evidence extraction could not be completed.
+                </p>
+              </div>
+            ) : null}
+
+            {application.resumeEvidence.professionalSummary ? (
+              <div>
+                <h4 className="font-semibold text-slate-950">Resume summary</h4>
+                <p className="mt-2 leading-7">
+                  {application.resumeEvidence.professionalSummary}
+                </p>
+              </div>
+            ) : null}
+
+      {application.resumeEvidence.skills.length > 0 ? (
+        <div>
+          <h4 className="font-semibold text-slate-950">Skills with evidence</h4>
+
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            {application.resumeEvidence.skills.map((skill, index) => (
+              <div
+                key={`${skill.name}-${index}`}
+                className="rounded-2xl border border-slate-200 p-4"
+              >
+                <p className="font-semibold text-slate-900">{skill.name}</p>
+
+                {skill.evidence.length > 0 ? (
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-600">
+                    {skill.evidence.map((evidence, evidenceIndex) => (
+                      <li key={`${skill.name}-evidence-${evidenceIndex}`}>
+                        {evidence}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-sm text-slate-500">
+                    Mentioned in the resume without additional supporting context.
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {application.resumeEvidence.experience.length > 0 ? (
+        <div>
+          <h4 className="font-semibold text-slate-950">Experience evidence</h4>
+
+          <div className="mt-3 space-y-3">
+            {application.resumeEvidence.experience.map((experience, index) => (
+              <div
+                key={`${experience.company}-${experience.role}-${index}`}
+                className="rounded-2xl border border-slate-200 p-4"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="font-semibold text-slate-900">
+                      {experience.role}
+                    </p>
+                    <p className="text-sm text-slate-600">{experience.company}</p>
+                  </div>
+
+                  {(experience.startDate || experience.endDate) ? (
+                    <p className="text-xs text-slate-500">
+                      {experience.startDate ?? "Unknown"} – {experience.endDate ?? "Present"}
+                    </p>
+                  ) : null}
+                </div>
+
+                <p className="mt-3 leading-6">{experience.description}</p>
+
+                {experience.skills.length > 0 ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {experience.skills.map((skill) => (
+                      <span
+                        key={skill}
+                        className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700"
+                      >
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {application.resumeEvidence.projects.length > 0 ? (
+        <div>
+          <h4 className="font-semibold text-slate-950">Project evidence</h4>
+
+          <div className="mt-3 space-y-3">
+            {application.resumeEvidence.projects.map((project, index) => (
+              <div
+                key={`${project.name}-${index}`}
+                className="rounded-2xl border border-slate-200 p-4"
+              >
+                <p className="font-semibold text-slate-900">{project.name}</p>
+                <p className="mt-2 leading-6">{project.description}</p>
+
+                {project.technologies.length > 0 ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {project.technologies.map((technology) => (
+                      <span
+                        key={technology}
+                        className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700"
+                      >
+                        {technology}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+
+                {project.evidence.length > 0 ? (
+                  <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-slate-600">
+                    {project.evidence.map((evidence, evidenceIndex) => (
+                      <li key={`${project.name}-evidence-${evidenceIndex}`}>
+                        {evidence}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {application.resumeEvidence.education.length > 0 ? (
+        <div>
+          <h4 className="font-semibold text-slate-950">Education</h4>
+
+          <div className="mt-3 space-y-3">
+            {application.resumeEvidence.education.map((education, index) => (
+              <div
+                key={`${education.institution}-${education.degree}-${index}`}
+                className="rounded-2xl border border-slate-200 p-4"
+              >
+                <p className="font-semibold text-slate-900">{education.degree}</p>
+
+                <p className="mt-1">
+                  {education.field ? `${education.field} · ` : ""}
+                  {education.institution}
+                </p>
+
+                {(education.startDate || education.endDate) ? (
+                  <p className="mt-1 text-xs text-slate-500">
+                    {education.startDate ?? "Unknown"} – {education.endDate ?? "Present"}
+                  </p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {application.resumeEvidence.certifications.length > 0 ? (
+        <div>
+          <h4 className="font-semibold text-slate-950">Certifications</h4>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            {application.resumeEvidence.certifications.map((certification, index) => (
+              <span
+                key={`${certification.name}-${index}`}
+                className="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"
+              >
+                {certification.name}
+                {certification.issuer ? ` · ${certification.issuer}` : ""}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <p className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-500">
+        Resume evidence reflects information found in the candidate&apos;s uploaded document.
+        Absence of evidence does not necessarily mean absence of a skill or experience.
+      </p>
+    </div>
+  )}
+</Section>
 
       <div className="flex justify-start">
         <Link href="/recruiter" className="text-sm font-semibold text-indigo-600 hover:underline">
