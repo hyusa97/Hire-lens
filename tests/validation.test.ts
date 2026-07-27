@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import { evaluationSchema, resumeIntelligenceSchema } from "../lib/ai/schema";
 import { parseApplicationValues } from "../lib/validation/applications";
 import { createJobSchema } from "../lib/validation/jobs";
+import { extractGitHubUsername } from "../lib/github/username";
+import { selectRelevantRepositories } from "../lib/github/repositories";
+import type { GitHubRepository } from "../lib/github/profile";
+
+
 
 const validApplication = {
   name: "Alex Morgan",
@@ -78,6 +83,22 @@ const validResumeIntelligence = {
       issuer: "Amazon Web Services",
     },
   ],
+};
+
+const githubRepositoryFixture: GitHubRepository = {
+  id: 1,
+  name: "hirelens",
+  full_name: "octocat/hirelens",
+  html_url: "https://github.com/octocat/hirelens",
+  description: "Evidence-based hiring intelligence platform",
+  fork: false,
+  archived: false,
+  language: "TypeScript",
+  stargazers_count: 0,
+  forks_count: 0,
+  topics: ["nextjs", "supabase"],
+  updated_at: new Date().toISOString(),
+  pushed_at: new Date().toISOString(),
 };
 
 const tests: Array<[string, () => void]> = [
@@ -168,7 +189,7 @@ const tests: Array<[string, () => void]> = [
     }
   }],
 
-  ["rejects invalid resume intelligence shape", () => {
+    ["rejects invalid resume intelligence shape", () => {
     const result = resumeIntelligenceSchema.safeParse({
       ...validResumeIntelligence,
       skills: [{ name: "", evidence: ["TypeScript"] }],
@@ -176,6 +197,102 @@ const tests: Array<[string, () => void]> = [
 
     assert.equal(result.success, false);
   }],
+
+  ["extracts a username from a GitHub profile URL", () => {
+    assert.equal(
+      extractGitHubUsername("https://github.com/octocat"),
+      "octocat",
+    );
+  }],
+
+  ["accepts www GitHub URLs", () => {
+    assert.equal(
+      extractGitHubUsername("https://www.github.com/octocat"),
+      "octocat",
+    );
+  }],
+
+  ["rejects GitHub repository URLs", () => {
+    assert.equal(
+      extractGitHubUsername("https://github.com/octocat/Hello-World"),
+      null,
+    );
+  }],
+
+  ["rejects non-GitHub URLs", () => {
+    assert.equal(
+      extractGitHubUsername("https://example.com/octocat"),
+      null,
+    );
+  }],
+
+  ["rejects invalid GitHub input", () => {
+    assert.equal(
+      extractGitHubUsername("not-a-url"),
+      null,
+    );
+  }],
+
+  ["filters forks and archived GitHub repositories", () => {
+  const repositories: GitHubRepository[] = [
+    githubRepositoryFixture,
+    {
+      ...githubRepositoryFixture,
+      id: 2,
+      name: "forked-project",
+      fork: true,
+    },
+    {
+      ...githubRepositoryFixture,
+      id: 3,
+      name: "archived-project",
+      archived: true,
+    },
+  ];
+
+  const result = selectRelevantRepositories(repositories);
+
+  assert.equal(result.length, 1);
+  assert.equal(result[0].name, "hirelens");
+}],
+
+["limits selected GitHub repositories", () => {
+  const repositories: GitHubRepository[] = Array.from(
+    { length: 12 },
+    (_, index) => ({
+      ...githubRepositoryFixture,
+      id: index + 1,
+      name: `project-${index + 1}`,
+    }),
+  );
+
+  const result = selectRelevantRepositories(repositories, 5);
+
+  assert.equal(result.length, 5);
+}],
+
+["ranks repositories with stronger technical context higher", () => {
+  const repositories: GitHubRepository[] = [
+    {
+      ...githubRepositoryFixture,
+      id: 1,
+      name: "empty-project",
+      description: null,
+      language: null,
+      topics: [],
+      pushed_at: null,
+    },
+    {
+      ...githubRepositoryFixture,
+      id: 2,
+      name: "technical-project",
+    },
+  ];
+
+  const result = selectRelevantRepositories(repositories);
+
+  assert.equal(result[0].name, "technical-project");
+}],
 ];
 
 for (const [name, run] of tests) {
@@ -184,3 +301,5 @@ for (const [name, run] of tests) {
 }
 
 console.log(`${tests.length} tests passed`);
+
+
