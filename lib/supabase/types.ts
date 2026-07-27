@@ -88,6 +88,42 @@ export type ResumeIntelligence = {
   updated_at: string;
 };
 
+export type GitHubIntelligence = {
+  id: string;
+  evidence_source_id: string;
+  username: string;
+  profile_name: string | null;
+  profile_bio: string | null;
+  profile_url: string;
+  public_repo_count: number;
+  repositories_analyzed: number;
+  extraction_status: "pending" | "processing" | "completed" | "failed";
+  extraction_error: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type GitHubRepositoryEvidence = {
+  id: string;
+  github_intelligence_id: string;
+  repository_name: string;
+  repository_url: string;
+  description: string | null;
+  languages: Record<string, number>;
+  topics: string[];
+  npm_dependencies: string[];
+  python_dependencies: string[];
+  readme_excerpt: string | null;
+  has_package_json: boolean;
+  has_requirements_txt: boolean;
+  has_pyproject_toml: boolean;
+  has_dockerfile: boolean;
+  has_docker_compose: boolean;
+  evidence_score: number;
+  pushed_at: string | null;
+  created_at: string;
+};
+
 export type Application = {
   id: string;
   job_id: string;
@@ -133,17 +169,56 @@ export type Database = {
         Update: Partial<Omit<EvidenceSource, "id" | "candidate_id" | "created_at">>;
         Relationships: [];
       };
-      resume_intelligence: {
+            resume_intelligence: {
         Row: ResumeIntelligence;
         Insert: Partial<
-        Omit<ResumeIntelligence, "id" | "created_at" | "updated_at">
-      > & {
-        evidence_source_id: string;
+          Omit<ResumeIntelligence, "id" | "created_at" | "updated_at">
+        > & {
+          evidence_source_id: string;
+        };
+        Update: Partial<
+          Omit<
+            ResumeIntelligence,
+            "id" | "evidence_source_id" | "created_at"
+          >
+        >;
+        Relationships: [];
       };
-      Update: Partial<
-        Omit<ResumeIntelligence, "id" | "evidence_source_id" | "created_at">
-      >;
-      Relationships: [];
+
+      github_intelligence: {
+        Row: GitHubIntelligence;
+        Insert: Partial<
+          Omit<GitHubIntelligence, "id" | "created_at" | "updated_at">
+        > & {
+          evidence_source_id: string;
+          username: string;
+          profile_url: string;
+        };
+        Update: Partial<
+          Omit<
+            GitHubIntelligence,
+            "id" | "evidence_source_id" | "created_at"
+          >
+        >;
+        Relationships: [];
+      };
+
+      github_repository_evidence: {
+        Row: GitHubRepositoryEvidence;
+        Insert: Partial<
+          Omit<GitHubRepositoryEvidence, "id" | "created_at">
+        > & {
+          github_intelligence_id: string;
+          repository_name: string;
+          repository_url: string;
+        };
+        Update: Partial<
+          Omit<
+            GitHubRepositoryEvidence,
+            "id" | "github_intelligence_id" | "created_at"
+          >
+        >;
+        Relationships: [];
       };
     };
     Views: Record<string, never>;

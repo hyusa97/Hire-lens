@@ -9,6 +9,7 @@ import {
   validateResumeFile,
 } from "../validation/applications";
 import type { ApplicationFormValues } from "../validation/applications";
+import { processCandidateGitHub } from "../github/process-candidate-github";
 
 
 import { supabase } from "./client";
@@ -431,7 +432,27 @@ export async function submitApplication(
       }
     }
 
-    // 8. Existing asynchronous AI evaluation
+    // 8. Process optional GitHub evidence.
+    // GitHub evidence is supplementary and must never invalidate
+    // an otherwise successful job application.
+    if (parsed.data.githubUrl) {
+      try {
+        await processCandidateGitHub(
+          candidateId,
+          parsed.data.githubUrl,
+        );
+      } catch (error) {
+        console.error("[GitHub Evidence] unexpected integration failure", {
+          candidateId,
+          message:
+            error instanceof Error
+              ? error.message
+              : "Unknown GitHub evidence processing error",
+        });
+      }
+    }
+
+    // 9. Existing asynchronous AI evaluation
     void (async () => {
       try {
         const {
@@ -548,7 +569,7 @@ export async function submitApplication(
       }
     })();
 
-    // 9. Revalidate pages
+    // 10. Revalidate pages
     revalidatePath("/jobs");
     revalidatePath(`/jobs/${jobId}`);
 
