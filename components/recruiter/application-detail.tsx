@@ -276,6 +276,43 @@ export function ApplicationDetailView({ application, onStatusChange }: Applicati
                 No supporting candidate evidence was found for this requirement.
               </p>
             )}
+            {alignment.evidence_items.length > 0 ? (
+  <details className="mt-4 border-t border-slate-100 pt-4">
+    <summary className="cursor-pointer text-sm font-semibold text-indigo-600">
+      View {alignment.evidence_items.length} evidence observation
+      {alignment.evidence_items.length === 1 ? "" : "s"}
+    </summary>
+
+    <div className="mt-4 space-y-3">
+      {alignment.evidence_items.map((item, index) => (
+        <div
+          key={`${item.evidence_type}-${item.source_reference ?? "evidence"}-${index}`}
+          className="rounded-xl bg-slate-50 p-3"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
+              {item.evidence_type.replaceAll("_", " ")}
+            </span>
+
+            <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-500">
+              {item.evidence_quality}
+            </span>
+          </div>
+
+          {item.source_reference ? (
+            <p className="mt-2 text-sm font-semibold text-slate-900">
+              {item.source_reference}
+            </p>
+          ) : null}
+
+          <p className="mt-1 text-sm leading-6 text-slate-600">
+            {item.description}
+          </p>
+        </div>
+      ))}
+    </div>
+  </details>
+) : null}
           </div>
         ))}
       </div>

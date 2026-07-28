@@ -20,6 +20,26 @@ export type RecruiterApplicationSummary = {
   candidate_name: string | null;
 };
 
+export type RecruiterSkillEvidenceItem = {
+  evidence_type:
+    | "application_claim"
+    | "resume_skill"
+    | "resume_project"
+    | "resume_experience"
+    | "github_language"
+    | "github_dependency"
+    | "github_topic"
+    | "github_readme";
+
+  evidence_quality:
+    | "claimed"
+    | "contextual"
+    | "artifact";
+
+  source_reference: string | null;
+  description: string;
+};
+
 export type RecruiterSkillAlignment = {
   required_skill: string;
   canonical_skill: string | null;
@@ -46,6 +66,9 @@ export type RecruiterSkillAlignment = {
 
   evidence_count: number;
   source_count: number;
+
+  evidence_items: RecruiterSkillEvidenceItem[];
+  
 };
 
 export type RecruiterEvidenceMatch = {
@@ -256,9 +279,109 @@ if (evidenceMatch) {
       message: alignmentError.message,
     });
   } else {
-    skillAlignments = alignmentRows ?? [];
+    const alignments = alignmentRows ?? [];
+
+const canonicalSkills = alignments
+  .map((alignment) => alignment.canonical_skill)
+  .filter((skill): skill is string => skill !== null);
+
+if (canonicalSkills.length === 0) {
+  skillAlignments = alignments.map((alignment) => ({
+    ...alignment,
+    evidence_items: [],
+  }));
+} else {
+  const { data: candidateSkillRows, error: candidateSkillError } =
+    await supabaseServer
+      .from("candidate_skill_evidence")
+      .select("id, canonical_skill")
+      .eq("candidate_id", application.candidate_id)
+      .in("canonical_skill", canonicalSkills);
+
+  if (candidateSkillError) {
+    console.error("[Recruiter] candidate skill evidence load failed", {
+      applicationId,
+      message: candidateSkillError.message,
+    });
+
+    skillAlignments = alignments.map((alignment) => ({
+      ...alignment,
+      evidence_items: [],
+    }));
+  } else {
+  const candidateSkills = candidateSkillRows ?? [];
+  const candidateSkillIds = candidateSkills.map((skill) => skill.id);
+
+  if (candidateSkillIds.length === 0) {
+    skillAlignments = alignments.map((alignment) => ({
+      ...alignment,
+      evidence_items: [],
+    }));
+  } else {
+    const { data: evidenceRows, error: evidenceError } =
+      await supabaseServer
+        .from("skill_evidence_items")
+        .select(
+          "candidate_skill_evidence_id, evidence_type, evidence_quality, source_reference, description",
+        )
+        .in("candidate_skill_evidence_id", candidateSkillIds);
+
+    if (evidenceError) {
+      console.error("[Recruiter] skill evidence items load failed", {
+        applicationId,
+        message: evidenceError.message,
+      });
+
+      skillAlignments = alignments.map((alignment) => ({
+        ...alignment,
+        evidence_items: [],
+      }));
+    } else {
+      const evidenceBySkillId = new Map<
+        string,
+        RecruiterSkillEvidenceItem[]
+      >();
+
+      for (const item of evidenceRows ?? []) {
+        const existing =
+          evidenceBySkillId.get(item.candidate_skill_evidence_id) ?? [];
+
+        existing.push({
+          evidence_type: item.evidence_type,
+          evidence_quality: item.evidence_quality,
+          source_reference: item.source_reference,
+          description: item.description,
+        });
+
+        evidenceBySkillId.set(
+          item.candidate_skill_evidence_id,
+          existing,
+        );
+      }
+
+      const skillIdByCanonical = new Map(
+        candidateSkills.map((skill) => [
+          skill.canonical_skill,
+          skill.id,
+        ]),
+      );
+
+      skillAlignments = alignments.map((alignment) => {
+        const skillId = alignment.canonical_skill
+          ? skillIdByCanonical.get(alignment.canonical_skill)
+          : undefined;
+
+        return {
+          ...alignment,
+          evidence_items: skillId
+            ? evidenceBySkillId.get(skillId) ?? []
+            : [],
+        };
+      });
+    }
   }
-}
+}} 
+}}
 
   return {
     id: application.id,
