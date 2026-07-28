@@ -16,6 +16,8 @@ import { supabaseServer } from "./server-client";
 import type { Database } from "./types";
 import type { ApplicationFormState } from "../validation/application-form-state";
 import { buildCandidateSkillEvidence } from "../evidence/build-candidate-skill-evidence";
+import { evaluateJobMatch } from "../matching/evaluate-job-match";
+import { persistJobMatch } from "../matching/persist-job-match";
 
 
 
@@ -520,6 +522,37 @@ export async function submitApplication(
         console.info("[AI Evaluation] records loaded", {
           applicationId: applicationRecord.id,
         });
+
+        try {
+          console.info("[Evidence Match] evaluation started", {
+            applicationId: applicationRecord.id,
+            candidateId: applicationRecord.candidate_id,
+          });
+
+          const evidenceMatch = await evaluateJobMatch(
+            applicationRecord.candidate_id,
+            jobRecord.required_skills ?? [],
+          );
+
+          await persistJobMatch(
+            applicationRecord.id,
+            evidenceMatch,
+          );
+
+          console.info("[Evidence Match] persistence completed", {
+    applicationId: applicationRecord.id,
+    totalRequirements: evidenceMatch.summary.totalRequirements,
+    evaluatedRequirements: evidenceMatch.summary.evaluatedRequirements,
+  });
+} catch (error) {
+  console.error("[Evidence Match] evaluation failed", {
+    applicationId: applicationRecord.id,
+    message:
+      error instanceof Error
+        ? error.message
+        : "Unknown evidence-backed matching error",
+  });
+}
 
         const evaluation = await analyzeCandidateWithGemini(
           {

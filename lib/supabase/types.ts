@@ -176,6 +176,60 @@ export type SkillEvidenceItem = {
   created_at: string;
 };
 
+export type ApplicationEvidenceMatch = {
+  id: string;
+  application_id: string;
+
+  total_requirements: number;
+  evaluated_requirements: number;
+
+  verified_matches: number;
+  supported_matches: number;
+  claimed_matches: number;
+  missing_requirements: number;
+  unmapped_requirements: number;
+
+  created_at: string;
+  updated_at: string;
+};
+
+export type ApplicationSkillAlignment = {
+  id: string;
+  application_match_id: string;
+
+  required_skill: string;
+  canonical_skill: string | null;
+  display_name: string;
+
+  alignment_status:
+    | "verified_match"
+    | "supported_match"
+    | "claimed_match"
+    | "missing"
+    | "unmapped_requirement";
+
+  claimed_in_application: boolean;
+  observed_in_resume: boolean;
+  observed_in_github: boolean;
+
+  evidence_strength:
+    | "weak"
+    | "moderate"
+    | "strong"
+    | null;
+
+  verification_status:
+    | "unverified"
+    | "partially_supported"
+    | "supported"
+    | null;
+
+  evidence_count: number;
+  source_count: number;
+
+  created_at: string;
+};
+
 export type Application = {
   id: string;
   job_id: string;
@@ -310,6 +364,37 @@ export type Database = {
           Omit<
             SkillEvidenceItem,
             "id" | "candidate_skill_evidence_id" | "created_at"
+          >
+        >;
+        Relationships: [];
+      };
+      application_evidence_matches: {
+        Row: ApplicationEvidenceMatch;
+        Insert: Partial<
+          Omit<ApplicationEvidenceMatch, "id" | "created_at">
+        > & {
+          application_id: string;
+        };
+        Update: Partial<
+          Omit<ApplicationEvidenceMatch, "id" | "application_id" | "created_at">
+        >;
+        Relationships: [];
+      };
+
+      application_skill_alignments: {
+        Row: ApplicationSkillAlignment;
+        Insert: Partial<
+          Omit<ApplicationSkillAlignment, "id" | "created_at">
+        > & {
+          application_match_id: string;
+          required_skill: string;
+          display_name: string;
+          alignment_status: ApplicationSkillAlignment["alignment_status"];
+        };
+        Update: Partial<
+          Omit<
+          ApplicationSkillAlignment,
+          "id" | "application_match_id" | "created_at"
           >
         >;
         Relationships: [];
