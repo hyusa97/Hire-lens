@@ -1,6 +1,49 @@
 import Link from "next/link";
 import type { RecruiterApplicationDetail } from "@/lib/recruiter/data";
 
+
+function AlignmentBadge({
+  status,
+}: {
+  status:
+    | "verified_match"
+    | "supported_match"
+    | "claimed_match"
+    | "missing"
+    | "unmapped_requirement";
+}) {
+  const config = {
+    verified_match: {
+      label: "Verified",
+      className: "bg-emerald-100 text-emerald-800",
+    },
+    supported_match: {
+      label: "Supported",
+      className: "bg-blue-100 text-blue-800",
+    },
+    claimed_match: {
+      label: "Claimed only",
+      className: "bg-amber-100 text-amber-800",
+    },
+    missing: {
+      label: "Missing",
+      className: "bg-rose-100 text-rose-800",
+    },
+    unmapped_requirement: {
+      label: "Unmapped",
+      className: "bg-slate-100 text-slate-700",
+    },
+  }[status];
+
+  return (
+    <span
+      className={`rounded-full px-3 py-1 text-xs font-semibold ${config.className}`}
+    >
+      {config.label}
+    </span>
+  );
+}
+
 function RecommendationBadge({ recommendation }: { recommendation: string | null }) {
   if (!recommendation) {
     return <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">Pending</span>;
@@ -124,6 +167,127 @@ export function ApplicationDetailView({ application, onStatusChange }: Applicati
           <p><span className="font-semibold text-slate-900">Applied:</span> {formatDate(application.created_at)}</p>
         </Section>
       </div>
+
+      <Section title="Evidence-backed job alignment">
+  {!application.evidenceMatch ? (
+    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6">
+      <p className="font-medium text-slate-900">
+        No evidence-backed alignment available
+      </p>
+      <p className="mt-1 text-sm text-slate-600">
+        Skill evidence has not been evaluated against this role yet.
+      </p>
+    </div>
+  ) : (
+    <div className="space-y-6">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-2xl bg-slate-50 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Requirements
+          </p>
+          <p className="mt-2 text-2xl font-semibold text-slate-950">
+            {application.evidenceMatch.total_requirements}
+          </p>
+        </div>
+
+        <div className="rounded-2xl bg-emerald-50 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+            Verified
+          </p>
+          <p className="mt-2 text-2xl font-semibold text-emerald-950">
+            {application.evidenceMatch.verified_matches}
+          </p>
+        </div>
+
+        <div className="rounded-2xl bg-blue-50 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+            Supported
+          </p>
+          <p className="mt-2 text-2xl font-semibold text-blue-950">
+            {application.evidenceMatch.supported_matches}
+          </p>
+        </div>
+
+        <div className="rounded-2xl bg-rose-50 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">
+            Missing
+          </p>
+          <p className="mt-2 text-2xl font-semibold text-rose-950">
+            {application.evidenceMatch.missing_requirements}
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {application.evidenceMatch.alignments.map((alignment) => (
+          <div
+            key={`${alignment.required_skill}-${alignment.canonical_skill ?? "unmapped"}`}
+            className="rounded-2xl border border-slate-200 p-4"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold text-slate-950">
+                  {alignment.display_name}
+                </p>
+
+                <p className="mt-1 text-xs text-slate-500">
+                  Required skill: {alignment.required_skill}
+                </p>
+              </div>
+
+              <AlignmentBadge status={alignment.alignment_status} />
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2 text-xs">
+              {alignment.claimed_in_application ? (
+                <span className="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-700">
+                  Application claim
+                </span>
+              ) : null}
+
+              {alignment.observed_in_resume ? (
+                <span className="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-700">
+                  Resume evidence
+                </span>
+              ) : null}
+
+              {alignment.observed_in_github ? (
+                <span className="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-700">
+                  GitHub evidence
+                </span>
+              ) : null}
+            </div>
+
+            {alignment.evidence_strength ? (
+              <p className="mt-3 text-sm text-slate-600">
+                <span className="font-medium text-slate-900">
+                  Evidence strength:
+                </span>{" "}
+                {alignment.evidence_strength}
+                {" · "}
+                {alignment.evidence_count} evidence observation
+                {alignment.evidence_count === 1 ? "" : "s"}
+                {" · "}
+                {alignment.source_count} source
+                {alignment.source_count === 1 ? "" : "s"}
+              </p>
+            ) : (
+              <p className="mt-3 text-sm text-slate-500">
+                No supporting candidate evidence was found for this requirement.
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <p className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+        Alignment is derived from normalized candidate claims and available
+        resume and GitHub evidence. Missing evidence does not prove lack of
+        capability.
+      </p>
+    </div>
+  )}
+</Section>
 
       <Section title="AI-assisted assessment">
         {application.match_score !== null ? (

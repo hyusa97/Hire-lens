@@ -20,6 +20,47 @@ export type RecruiterApplicationSummary = {
   candidate_name: string | null;
 };
 
+export type RecruiterSkillAlignment = {
+  required_skill: string;
+  canonical_skill: string | null;
+  display_name: string;
+
+  alignment_status:
+    | "verified_match"
+    | "supported_match"
+    | "claimed_match"
+    | "missing"
+    | "unmapped_requirement";
+
+  claimed_in_application: boolean;
+  observed_in_resume: boolean;
+  observed_in_github: boolean;
+
+  evidence_strength: "weak" | "moderate" | "strong" | null;
+
+  verification_status:
+    | "unverified"
+    | "partially_supported"
+    | "supported"
+    | null;
+
+  evidence_count: number;
+  source_count: number;
+};
+
+export type RecruiterEvidenceMatch = {
+  total_requirements: number;
+  evaluated_requirements: number;
+
+  verified_matches: number;
+  supported_matches: number;
+  claimed_matches: number;
+  missing_requirements: number;
+  unmapped_requirements: number;
+
+  alignments: RecruiterSkillAlignment[];
+};
+
 export type RecruiterDashboardStats = {
   activeJobs: number;
   totalApplications: number;
@@ -126,6 +167,8 @@ export type RecruiterApplicationDetail = {
     education: ResumeEducation[];
     certifications: ResumeCertification[];
   } | null;
+
+  evidenceMatch: RecruiterEvidenceMatch | null;
 };
 
 export async function getRecruiterApplicationById(
@@ -151,6 +194,7 @@ export async function getRecruiterApplicationById(
     { data: candidate },
     { data: job },
     { data: resumeSource },
+    { data: evidenceMatch },
   ] = await Promise.all([
     supabaseServer
       .from("candidates")
@@ -174,6 +218,14 @@ export async function getRecruiterApplicationById(
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle(),
+
+    supabaseServer
+      .from("application_evidence_matches")
+      .select(
+        "id, total_requirements, evaluated_requirements, verified_matches, supported_matches, claimed_matches, missing_requirements, unmapped_requirements",
+      )
+      .eq("application_id", applicationId)
+      .maybeSingle(),
   ]);
 
   const { data: resumeIntelligence } = resumeSource
@@ -185,6 +237,28 @@ export async function getRecruiterApplicationById(
         .eq("evidence_source_id", resumeSource.id)
         .maybeSingle()
     : { data: null };
+
+  let skillAlignments: RecruiterSkillAlignment[] = [];
+
+if (evidenceMatch) {
+  const { data: alignmentRows, error: alignmentError } =
+    await supabaseServer
+      .from("application_skill_alignments")
+      .select(
+        "required_skill, canonical_skill, display_name, alignment_status, claimed_in_application, observed_in_resume, observed_in_github, evidence_strength, verification_status, evidence_count, source_count",
+      )
+      .eq("application_match_id", evidenceMatch.id)
+      .order("required_skill");
+
+  if (alignmentError) {
+    console.error("[Recruiter] skill alignments load failed", {
+      applicationId,
+      message: alignmentError.message,
+    });
+  } else {
+    skillAlignments = alignmentRows ?? [];
+  }
+}
 
   return {
     id: application.id,
@@ -238,6 +312,19 @@ export async function getRecruiterApplicationById(
             certifications: resumeIntelligence.certifications,
           }
         : null,
+
+      evidenceMatch: evidenceMatch
+  ? {
+      total_requirements: evidenceMatch.total_requirements,
+      evaluated_requirements: evidenceMatch.evaluated_requirements,
+      verified_matches: evidenceMatch.verified_matches,
+      supported_matches: evidenceMatch.supported_matches,
+      claimed_matches: evidenceMatch.claimed_matches,
+      missing_requirements: evidenceMatch.missing_requirements,
+      unmapped_requirements: evidenceMatch.unmapped_requirements,
+      alignments: skillAlignments,
+    }
+  : null,
   };
 }
 
