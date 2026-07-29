@@ -5,6 +5,7 @@ import { notFound, redirect } from "next/navigation";
 import { createJobSchema, normalizeSkills, type CreateJobValues } from "../validation/jobs";
 import { supabase } from "./client";
 import { supabaseServer } from "./server-client";
+import { createAuthServerClient } from "./auth-server";
 
 export type PublicJob = {
   id: string;
@@ -74,9 +75,20 @@ export async function getActiveJobById(jobId: string): Promise<PublicJob | null>
 }
 
 export async function getRecruiterJobs(): Promise<RecruiterJobSummary[]> {
+  const authSupabase = await createAuthServerClient();
+  const {
+    data: { user },
+    error: userError,
+  } = await authSupabase.auth.getUser();
+
+  if (userError || !user) {
+    return [];
+  }
+
   const { data, error } = await supabaseServer
     .from("jobs")
     .select("id, title, department, location, employment_type, experience_level, status, created_at")
+    .eq("recruiter_id", user.id)
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -153,7 +165,24 @@ export async function createRecruiterJob(prevState: CreateJobState, formData: Fo
     };
   }
 
+  const authSupabase = await createAuthServerClient();
+
+const {
+  data: { user },
+  error: userError,
+} = await authSupabase.auth.getUser();
+
+if (userError || !user) {
+  return {
+    success: false,
+    message: "Your session has expired. Please sign in again.",
+    errors: {},
+    values,
+  };
+}
+
   const { data, error } = await supabaseServer.from("jobs").insert({
+    recruiter_id: user.id,
     title: parsed.data.title,
     department: parsed.data.department || null,
     location: parsed.data.location || null,

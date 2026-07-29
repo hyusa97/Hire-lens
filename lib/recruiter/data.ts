@@ -2,6 +2,7 @@
 //import { supabaseServer } from "../supabase/server-client";
 import "server-only";
 import { supabaseServer } from "../supabase/server-client";
+import { createAuthServerClient } from "../supabase/auth-server";
 import type {
   ResumeSkill,
   ResumeExperience,
@@ -9,6 +10,30 @@ import type {
   ResumeEducation,
   ResumeCertification,
 } from "../supabase/types";
+
+async function getAuthenticatedRecruiterJobIds(): Promise<string[]> {
+  const authSupabase = await createAuthServerClient();
+
+  const {
+    data: { user },
+    error: userError,
+  } = await authSupabase.auth.getUser();
+
+  if (userError || !user) {
+    return [];
+  }
+
+  const { data: jobs, error: jobsError } = await supabaseServer
+    .from("jobs")
+    .select("id")
+    .eq("recruiter_id", user.id);
+
+  if (jobsError) {
+    throw new Error(jobsError.message);
+  }
+
+  return (jobs ?? []).map((job) => job.id);
+}
 
 export type RecruiterApplicationSummary = {
   id: string;
@@ -93,20 +118,70 @@ export type RecruiterDashboardStats = {
 };
 
 export async function getRecruiterDashboardStats(): Promise<RecruiterDashboardStats> {
-  const [{ count: activeJobs }, { count: totalApplications }, { count: shortlistedApplications }, { count: pendingReviewCount }, { data: applications, error: applicationsError }] = await Promise.all([
-    supabaseServer.from("jobs").select("id", { count: "exact", head: true }).eq("status", "active"),
-    supabaseServer.from("applications").select("id", { count: "exact", head: true }),
-    supabaseServer.from("applications").select("id", { count: "exact", head: true }).eq("status", "shortlisted"),
-    supabaseServer.from("applications").select("id", { count: "exact", head: true }).in("status", ["pending", "reviewing"]),
-    supabaseServer.from("applications").select("match_score").not("match_score", "is", null),
+  const recruiterJobIds = await getAuthenticatedRecruiterJobIds();
+
+  if (recruiterJobIds.length === 0) {
+    return {
+      activeJobs: 0,
+      totalApplications: 0,
+      shortlistedApplications: 0,
+      pendingReviewCount: 0,
+      averageMatchScore: null,
+    };
+  }
+
+  const [
+    { count: activeJobs },
+    { count: totalApplications },
+    { count: shortlistedApplications },
+    { count: pendingReviewCount },
+    { data: applications, error: applicationsError },
+  ] = await Promise.all([
+    supabaseServer
+      .from("jobs")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "active")
+      .in("id", recruiterJobIds),
+
+    supabaseServer
+      .from("applications")
+      .select("id", { count: "exact", head: true })
+      .in("job_id", recruiterJobIds),
+
+    supabaseServer
+      .from("applications")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "shortlisted")
+      .in("job_id", recruiterJobIds),
+
+    supabaseServer
+      .from("applications")
+      .select("id", { count: "exact", head: true })
+      .in("status", ["pending", "reviewing"])
+      .in("job_id", recruiterJobIds),
+
+    supabaseServer
+      .from("applications")
+      .select("match_score")
+      .not("match_score", "is", null)
+      .in("job_id", recruiterJobIds),
   ]);
 
   if (applicationsError) {
     throw new Error(applicationsError.message);
   }
 
-  const validScores = (applications ?? []).flatMap((application) => (typeof application.match_score === "number" ? [application.match_score] : []));
-  const averageMatchScore = validScores.length > 0 ? validScores.reduce((sum, score) => sum + score, 0) / validScores.length : null;
+  const validScores = (applications ?? []).flatMap((application) =>
+    typeof application.match_score === "number"
+      ? [application.match_score]
+      : [],
+  );
+
+  const averageMatchScore =
+    validScores.length > 0
+      ? validScores.reduce((sum, score) => sum + score, 0) /
+        validScores.length
+      : null;
 
   return {
     activeJobs: activeJobs ?? 0,
@@ -197,12 +272,18 @@ export type RecruiterApplicationDetail = {
 export async function getRecruiterApplicationById(
   applicationId: string,
 ): Promise<RecruiterApplicationDetail | null> {
+    const recruiterJobIds = await getAuthenticatedRecruiterJobIds();
+
+  if (recruiterJobIds.length === 0) {
+    return null;
+  }
   const { data: application, error } = await supabaseServer
     .from("applications")
     .select(
       "id, status, created_at, match_score, recommendation, matched_skills, missing_skills, strengths, concerns, ai_summary, candidate_id, job_id",
     )
     .eq("id", applicationId)
+    .in("job_id", recruiterJobIds)
     .maybeSingle();
 
   if (error) {
@@ -454,11 +535,16 @@ if (canonicalSkills.length === 0) {
 export async function getRecentApplications(
   limit = 8,
 ): Promise<RecruiterApplicationSummary[]> {
+  const recruiterJobIds = await getAuthenticatedRecruiterJobIds();
+  if (recruiterJobIds.length === 0) {
+    return [];
+  }
   const { data, error } = await supabaseServer
     .from("applications")
     .select(
       "id, status, created_at, match_score, recommendation, job_id, candidate_id",
     )
+    .in("job_id", recruiterJobIds)
     .order("created_at", { ascending: false })
     .limit(limit);
 
@@ -531,12 +617,27 @@ export async function updateRecruiterApplicationStatus(
   applicationId: string,
   status: "pending" | "reviewing" | "shortlisted" | "rejected",
 ) {
-  const { error } = await supabaseServer
+  const recruiterJobIds = await getAuthenticatedRecruiterJobIds();
+
+  if (recruiterJobIds.length === 0) {
+    throw new Error("Application not found or access denied.");
+  }
+
+  const { data: updatedApplication, error } = await supabaseServer
     .from("applications")
-    .update({ status })
-    .eq("id", applicationId);
+    .update({
+      status,
+    })
+    .eq("id", applicationId)
+    .in("job_id", recruiterJobIds)
+    .select("id")
+    .maybeSingle();
 
   if (error) {
     throw new Error(error.message);
+  }
+
+  if (!updatedApplication) {
+    throw new Error("Application not found or access denied.");
   }
 }

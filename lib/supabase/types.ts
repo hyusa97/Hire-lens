@@ -1,5 +1,6 @@
 export type Job = {
   id: string;
+  recruiter_id: string;
   title: string;
   department: string | null;
   location: string | null;
