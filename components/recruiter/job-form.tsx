@@ -1,7 +1,11 @@
 "use client";
 
 import { useActionState } from "react";
-import { createRecruiterJob, type CreateJobState } from "@/lib/supabase/jobs";
+import {
+  createRecruiterJob,
+  updateRecruiterJob,
+  type CreateJobState,
+} from "@/lib/supabase/jobs";
 
 const initialState: CreateJobState = {
   success: false,
@@ -19,9 +23,29 @@ const initialState: CreateJobState = {
     status: "draft",
   },
 };
+type RecruiterJobFormProps = {
+  mode?: "create" | "edit";
+  jobId?: string;
+  initialValues?: CreateJobState["values"];
+};
 
-export function RecruiterJobForm() {
-  const [state, formAction, isPending] = useActionState(createRecruiterJob, initialState);
+export function RecruiterJobForm({
+  mode = "create",
+  jobId,
+  initialValues,
+}: RecruiterJobFormProps) {
+  const formState: CreateJobState = {
+  ...initialState,
+  values: initialValues ?? initialState.values,
+};
+
+const action =
+  mode === "edit"
+    ? updateRecruiterJob.bind(null, jobId!)
+    : createRecruiterJob;
+
+const [state, formAction, isPending] =
+  useActionState(action, formState);
 
   return (
     <form action={formAction} className="space-y-8 rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">

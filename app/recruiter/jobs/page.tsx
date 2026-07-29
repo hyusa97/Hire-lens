@@ -77,10 +77,17 @@ export default async function RecruiterJobsPage() {
                       <p><span className="font-semibold text-slate-900">Type:</span> {job.employment_type ?? "Not specified"}</p>
                       <p><span className="font-semibold text-slate-900">Experience:</span> {job.experience_level ?? "Not specified"}</p>
                     </div>
+                      <Link
+                        href={`/recruiter/jobs/${job.id}/edit`}
+                          className="inline-flex items-center rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-700 transition hover:bg-indigo-100"
+                          >
+                          ✏️ Edit Job
+                      </Link>
                     {job.status === "active" ? (
                       <Link href={`/jobs/${job.id}`} className="text-sm font-semibold text-indigo-600 hover:underline">
                         View public posting
                       </Link>
+                      
                     ) : null}
                   </div>
                 </div>

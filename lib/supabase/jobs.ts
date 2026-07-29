@@ -121,6 +121,36 @@ export async function getRecruiterJobs(): Promise<RecruiterJobSummary[]> {
   })) as RecruiterJobSummary[];
 }
 
+export async function getRecruiterJobById(
+  jobId: string,
+): Promise<PublicJob | null> {
+  const authSupabase = await createAuthServerClient();
+
+  const {
+    data: { user },
+    error: userError,
+  } = await authSupabase.auth.getUser();
+
+  if (userError || !user) {
+    return null;
+  }
+
+  const { data, error } = await supabaseServer
+    .from("jobs")
+    .select(
+      "id, title, department, location, employment_type, description, requirements, required_skills, experience_level, status, created_at, updated_at",
+    )
+    .eq("id", jobId)
+    .eq("recruiter_id", user.id)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Unable to load recruiter job: ${error.message}`);
+  }
+
+  return (data as PublicJob | null) ?? null;
+}
+
 export async function getActiveJobByIdOrThrow(jobId: string): Promise<PublicJob> {
   const job = await getActiveJobById(jobId);
 
@@ -206,5 +236,102 @@ if (userError || !user) {
   revalidatePath("/recruiter/jobs");
   revalidatePath("/jobs");
   revalidatePath(`/jobs/${data.id}`);
+  redirect("/recruiter/jobs");
+}
+
+export async function updateRecruiterJob(
+  jobId: string,
+  prevState: CreateJobState,
+  formData: FormData,
+): Promise<CreateJobState> {
+
+  const values: CreateJobValues = {
+    title: formData.get("title")?.toString() ?? "",
+    department: formData.get("department")?.toString() ?? "",
+    location: formData.get("location")?.toString() ?? "",
+    employmentType: formData.get("employmentType")?.toString() ?? "full-time",
+    experienceLevel: formData.get("experienceLevel")?.toString() ?? "mid",
+    requiredSkills: formData.get("requiredSkills")?.toString() ?? "",
+    description: formData.get("description")?.toString() ?? "",
+    requirements: formData.get("requirements")?.toString() ?? "",
+    status: (formData.get("status")?.toString() as CreateJobValues["status"]) ?? "draft",
+  };
+
+  const parsed = createJobSchema.safeParse(values);
+  if (!parsed.success) {
+    const fieldErrors = parsed.error.flatten().fieldErrors;
+    return {
+      success: false,
+      message: "Please correct the highlighted fields and try again.",
+      errors: {
+        title: fieldErrors.title?.[0],
+        department: fieldErrors.department?.[0],
+        location: fieldErrors.location?.[0],
+        employmentType: fieldErrors.employmentType?.[0],
+        experienceLevel: fieldErrors.experienceLevel?.[0],
+        requiredSkills: fieldErrors.requiredSkills?.[0],
+        description: fieldErrors.description?.[0],
+        requirements: fieldErrors.requirements?.[0],
+        status: fieldErrors.status?.[0],
+      },
+      values,
+    };
+  }
+
+  const authSupabase = await createAuthServerClient();
+
+const {
+  data: { user },
+  error: userError,
+} = await authSupabase.auth.getUser();
+
+if (userError || !user) {
+  return {
+    success: false,
+    message: "Your session has expired. Please sign in again.",
+    errors: {},
+    values,
+  };
+}
+
+const { data: updatedJob, error } = await supabaseServer
+  .from("jobs")
+  .update({
+    title: parsed.data.title,
+    department: parsed.data.department || null,
+    location: parsed.data.location || null,
+    employment_type: parsed.data.employmentType,
+    experience_level: parsed.data.experienceLevel,
+    required_skills: normalizeSkills(parsed.data.requiredSkills),
+    description: parsed.data.description,
+    requirements: parsed.data.requirements,
+    status: parsed.data.status,
+  })
+  .eq("id", jobId)
+  .eq("recruiter_id", user.id)
+  .select("id")
+  .maybeSingle();
+
+if (error) {
+  return {
+    success: false,
+    message: "We could not update the role right now. Please try again shortly.",
+    errors: {},
+    values,
+  };
+}
+
+if (!updatedJob) {
+  return {
+    success: false,
+    message: "Job not found or access denied.",
+    errors: {},
+    values,
+  };
+}
+
+  revalidatePath("/recruiter/jobs");
+  revalidatePath("/jobs");
+  revalidatePath(`/jobs/${jobId}`);
   redirect("/recruiter/jobs");
 }
