@@ -18,9 +18,15 @@ export async function login(formData: FormData) {
     password,
   });
 
-  if (error) {
-    redirect("/login?error=Invalid%20email%20or%20password");
+if (error) {
+  if (error.code === "email_not_confirmed") {
+    redirect(
+      "/login?error=Please%20verify%20your%20email%20before%20signing%20in.%20Check%20your%20inbox%20for%20the%20verification%20link.",
+    );
   }
+
+  redirect("/login?error=Invalid%20email%20or%20password");
+}
 
   redirect("/recruiter");
 }
@@ -47,13 +53,19 @@ export async function signup(formData: FormData) {
     },
   });
 
-  if (error) {
-    redirect(`/signup?error=${encodeURIComponent(error.message)}`);
+if (error) {
+  if (error.message.toLowerCase().includes("email rate limit exceeded")) {
+    redirect(
+      `/verify-email?status=already-sent&email=${encodeURIComponent(email)}`,
+    );
   }
 
-  redirect(
-    "/login?message=Account%20created.%20Check%20your%20email%20to%20verify%20your%20account.",
-  );
+  redirect(`/signup?error=${encodeURIComponent(error.message)}`);
+}
+
+redirect(
+  `/verify-email?status=sent&email=${encodeURIComponent(email)}`,
+);
 }
 
 export async function logout() {
