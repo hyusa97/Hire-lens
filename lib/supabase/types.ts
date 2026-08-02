@@ -177,6 +177,45 @@ export type SkillEvidenceItem = {
   created_at: string;
 };
 
+export type RecruiterProfile = {
+  id: string;
+  user_id: string;
+
+  slug: string;
+
+  display_name: string;
+
+  headline: string | null;
+  about: string | null;
+  avatar_url: string | null;
+
+  hiring_type:
+    | "company"
+    | "startup"
+    | "agency"
+    | "freelancer"
+    | "government"
+    | "university"
+    | "consultancy"
+    | "ngo";
+
+  company_name: string | null;
+  company_website: string | null;
+  company_linkedin: string | null;
+
+  recruiter_linkedin: string | null;
+  professional_email: string | null;
+
+  location: string | null;
+
+  show_email: boolean;
+  show_linkedin: boolean;
+  allow_direct_contact: boolean;
+
+  created_at: string;
+  updated_at: string;
+};
+
 export type ApplicationEvidenceMatch = {
   id: string;
   application_id: string;
@@ -253,6 +292,24 @@ export type Database = {
         Row: Job;
         Insert: Partial<Job>;
         Update: Partial<Job>;
+        Relationships: [];
+      };
+            recruiter_profiles: {
+        Row: RecruiterProfile;
+        Insert: Partial<
+          Omit<RecruiterProfile, "id" | "created_at" | "updated_at">
+        > & {
+          user_id: string;
+          slug: string;
+          display_name: string;
+          hiring_type: RecruiterProfile["hiring_type"];
+        };
+        Update: Partial<
+          Omit<
+            RecruiterProfile,
+            "id" | "user_id" | "created_at" | "updated_at"
+          >
+        >;
         Relationships: [];
       };
       candidates: {

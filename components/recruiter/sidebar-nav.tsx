@@ -15,6 +15,10 @@ const items = [
     label: "Jobs",
   },
   {
+    href: "/recruiter/profile",
+    label: "Profile",
+  },
+  {
     href: "/recruiter/applications",
     label: "Applications",
   },
